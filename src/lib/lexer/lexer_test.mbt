@@ -574,3 +574,61 @@ test "snapshot: int add(int a, int b) { return a + b; }" {
     content="Ok([{token: KwInt, pos: {line: 1, col: 1}}, {token: Ident(\"add\"), pos: {line: 1, col: 5}}, {token: LParen, pos: {line: 1, col: 8}}, {token: KwInt, pos: {line: 1, col: 9}}, {token: Ident(\"a\"), pos: {line: 1, col: 13}}, {token: Comma, pos: {line: 1, col: 14}}, {token: KwInt, pos: {line: 1, col: 16}}, {token: Ident(\"b\"), pos: {line: 1, col: 20}}, {token: RParen, pos: {line: 1, col: 21}}, {token: LBrace, pos: {line: 1, col: 23}}, {token: KwReturn, pos: {line: 1, col: 25}}, {token: Ident(\"a\"), pos: {line: 1, col: 32}}, {token: Plus, pos: {line: 1, col: 34}}, {token: Ident(\"b\"), pos: {line: 1, col: 36}}, {token: Semi, pos: {line: 1, col: 37}}, {token: RBrace, pos: {line: 1, col: 39}}, {token: Eof, pos: {line: 1, col: 40}}])",
   )
 }
+
+// --- エッジケースのスナップショットテスト ---
+
+test "snapshot edge: string with all escape sequences" {
+  let lexer = @lexer.Lexer::new("char *s = \"hello\\n\\t\\\\\\0world\";")
+  let result = lexer.tokenize()
+  inspect(result, content=(
+    #|Ok([{token: KwChar, pos: {line: 1, col: 1}}, {token: Star, pos: {line: 1, col: 6}}, {token: Ident("s"), pos: {line: 1, col: 7}}, {token: Assign, pos: {line: 1, col: 9}}, {token: StringLit("hello\n\t\\\u{00}world"), pos: {line: 1, col: 11}}, {token: Semi, pos: {line: 1, col: 31}}, {token: Eof, pos: {line: 1, col: 32}}])
+  ))
+}
+
+test "snapshot edge: consecutive operators without spaces" {
+  let lexer = @lexer.Lexer::new("a+++b---c")
+  let result = lexer.tokenize()
+  inspect(result, content=(
+    #|Ok([{token: Ident("a"), pos: {line: 1, col: 1}}, {token: Inc, pos: {line: 1, col: 2}}, {token: Plus, pos: {line: 1, col: 4}}, {token: Ident("b"), pos: {line: 1, col: 5}}, {token: Dec, pos: {line: 1, col: 6}}, {token: Minus, pos: {line: 1, col: 8}}, {token: Ident("c"), pos: {line: 1, col: 9}}, {token: Eof, pos: {line: 1, col: 10}}])
+  ))
+}
+
+test "snapshot edge: pointer declaration and dereference" {
+  let lexer = @lexer.Lexer::new("int *p = &x; *p = 42;")
+  let result = lexer.tokenize()
+  inspect(result, content=(
+    #|Ok([{token: KwInt, pos: {line: 1, col: 1}}, {token: Star, pos: {line: 1, col: 5}}, {token: Ident("p"), pos: {line: 1, col: 6}}, {token: Assign, pos: {line: 1, col: 8}}, {token: Amp, pos: {line: 1, col: 10}}, {token: Ident("x"), pos: {line: 1, col: 11}}, {token: Semi, pos: {line: 1, col: 12}}, {token: Star, pos: {line: 1, col: 14}}, {token: Ident("p"), pos: {line: 1, col: 15}}, {token: Assign, pos: {line: 1, col: 17}}, {token: IntLit(42), pos: {line: 1, col: 19}}, {token: Semi, pos: {line: 1, col: 21}}, {token: Eof, pos: {line: 1, col: 22}}])
+  ))
+}
+
+test "snapshot edge: chained comparisons and logical ops" {
+  let lexer = @lexer.Lexer::new("a<=b&&c!=d||e>=f")
+  let result = lexer.tokenize()
+  inspect(result, content=(
+    #|Ok([{token: Ident("a"), pos: {line: 1, col: 1}}, {token: Le, pos: {line: 1, col: 2}}, {token: Ident("b"), pos: {line: 1, col: 4}}, {token: And, pos: {line: 1, col: 5}}, {token: Ident("c"), pos: {line: 1, col: 7}}, {token: Ne, pos: {line: 1, col: 8}}, {token: Ident("d"), pos: {line: 1, col: 10}}, {token: Or, pos: {line: 1, col: 11}}, {token: Ident("e"), pos: {line: 1, col: 13}}, {token: Ge, pos: {line: 1, col: 14}}, {token: Ident("f"), pos: {line: 1, col: 16}}, {token: Eof, pos: {line: 1, col: 17}}])
+  ))
+}
+
+test "snapshot edge: shift operators with assignment" {
+  let lexer = @lexer.Lexer::new("x=a<<2;y=b>>3;")
+  let result = lexer.tokenize()
+  inspect(result, content=(
+    #|Ok([{token: Ident("x"), pos: {line: 1, col: 1}}, {token: Assign, pos: {line: 1, col: 2}}, {token: Ident("a"), pos: {line: 1, col: 3}}, {token: Shl, pos: {line: 1, col: 4}}, {token: IntLit(2), pos: {line: 1, col: 6}}, {token: Semi, pos: {line: 1, col: 7}}, {token: Ident("y"), pos: {line: 1, col: 8}}, {token: Assign, pos: {line: 1, col: 9}}, {token: Ident("b"), pos: {line: 1, col: 10}}, {token: Shr, pos: {line: 1, col: 11}}, {token: IntLit(3), pos: {line: 1, col: 13}}, {token: Semi, pos: {line: 1, col: 14}}, {token: Eof, pos: {line: 1, col: 15}}])
+  ))
+}
+
+test "snapshot edge: struct member access with arrow" {
+  let lexer = @lexer.Lexer::new("p->x + s.y")
+  let result = lexer.tokenize()
+  inspect(result, content=(
+    #|Ok([{token: Ident("p"), pos: {line: 1, col: 1}}, {token: Arrow, pos: {line: 1, col: 2}}, {token: Ident("x"), pos: {line: 1, col: 4}}, {token: Plus, pos: {line: 1, col: 6}}, {token: Ident("s"), pos: {line: 1, col: 8}}, {token: Dot, pos: {line: 1, col: 9}}, {token: Ident("y"), pos: {line: 1, col: 10}}, {token: Eof, pos: {line: 1, col: 11}}])
+  ))
+}
+
+test "snapshot edge: char literals with escapes" {
+  let lexer = @lexer.Lexer::new("char c = '\\n'; char d = '\\\\';")
+  let result = lexer.tokenize()
+  inspect(result, content=(
+    #|Ok([{token: KwChar, pos: {line: 1, col: 1}}, {token: Ident("c"), pos: {line: 1, col: 6}}, {token: Assign, pos: {line: 1, col: 8}}, {token: CharLit('\n'), pos: {line: 1, col: 10}}, {token: Semi, pos: {line: 1, col: 14}}, {token: KwChar, pos: {line: 1, col: 16}}, {token: Ident("d"), pos: {line: 1, col: 21}}, {token: Assign, pos: {line: 1, col: 23}}, {token: CharLit('\\'), pos: {line: 1, col: 25}}, {token: Semi, pos: {line: 1, col: 29}}, {token: Eof, pos: {line: 1, col: 30}}])
+  ))
+}
