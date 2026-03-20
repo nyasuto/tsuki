@@ -177,6 +177,20 @@ fn Parser::parse_expr_bp(
       lhs = @ast.Expr::UnaryOp(PostDec, lhs)
       continue
     }
+    // 配列添字 a[i] → *(a + i) へのデシュガー（結合力 25: 後置演算子と同等）
+    if op_token == @lexer.Token::LBracket && postfix_bp >= min_bp {
+      self.advance() |> ignore
+      let index = match self.parse_expr() {
+        Ok(e) => e
+        Err(e) => return Err(e)
+      }
+      match self.expect(@lexer.Token::RBracket) {
+        Ok(_) => ()
+        Err(e) => return Err(e)
+      }
+      lhs = @ast.Expr::UnaryOp(Deref, @ast.Expr::BinaryOp(Add, lhs, index))
+      continue
+    }
     let should_continue = match infix_binding_power(op_token) {
       None => false
       Some((lbp, _)) => lbp >= min_bp

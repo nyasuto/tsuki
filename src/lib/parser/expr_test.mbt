@@ -334,3 +334,39 @@ test "parse postfix increment in expression" {
     content="Ok(BinaryOp(Add, UnaryOp(PostInc, Ident(\"x\")), IntLiteral(1)))",
   )
 }
+
+test "parse array subscript a[i] desugars to *(a + i)" {
+  let parser = make_parser("a[0]")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(UnaryOp(Deref, BinaryOp(Add, Ident(\"a\"), IntLiteral(0))))",
+  )
+}
+
+test "parse array subscript with complex index" {
+  let parser = make_parser("arr[i + 1]")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(UnaryOp(Deref, BinaryOp(Add, Ident(\"arr\"), BinaryOp(Add, Ident(\"i\"), IntLiteral(1)))))",
+  )
+}
+
+test "parse chained array subscript a[i][j]" {
+  let parser = make_parser("a[i][j]")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(UnaryOp(Deref, BinaryOp(Add, UnaryOp(Deref, BinaryOp(Add, Ident(\"a\"), Ident(\"i\"))), Ident(\"j\"))))",
+  )
+}
+
+test "parse array subscript in expression" {
+  let parser = make_parser("a[0] + b[1]")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(BinaryOp(Add, UnaryOp(Deref, BinaryOp(Add, Ident(\"a\"), IntLiteral(0))), UnaryOp(Deref, BinaryOp(Add, Ident(\"b\"), IntLiteral(1)))))",
+  )
+}
