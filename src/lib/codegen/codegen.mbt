@@ -7,6 +7,8 @@ pub suberror CodegenError {
 }
 
 /// Wasm 命令のオペコード定数
+let op_local_get : Byte = b'\x20'
+let op_local_set : Byte = b'\x21'
 let op_i32_const : Byte = b'\x41'
 let op_i32_eqz : Byte = b'\x45'
 let op_i32_eq : Byte = b'\x46'
@@ -25,6 +27,46 @@ let op_i32_or : Byte = b'\x72'
 let op_i32_xor : Byte = b'\x73'
 let op_i32_shl : Byte = b'\x74'
 let op_i32_shr_s : Byte = b'\x75'
+
+/// コード生成コンテキスト: 変数名 → Wasm local index のマッピングを管理する
+pub struct CodegenContext {
+  /// 変数名 → local index のマッピング
+  locals : Map[String, Int]
+  /// 次に割り当てる local index
+  mut next_index : Int
+}
+
+/// 新しい CodegenContext を作成する
+pub fn CodegenContext::new() -> CodegenContext {
+  { locals: {}, next_index: 0 }
+}
+
+/// 関数パラメータをローカル変数として登録する
+/// パラメータは関数の先頭から順に local index 0, 1, 2, ... に割り当てられる
+pub fn CodegenContext::from_params(params : Array[@ast.Param]) -> CodegenContext {
+  let ctx = CodegenContext::new()
+  for param in params {
+    ctx.locals[param.name] = ctx.next_index
+    ctx.next_index += 1
+  }
+  ctx
+}
+
+/// ローカル変数を登録し、割り当てられた local index を返す
+pub fn CodegenContext::add_local(self : CodegenContext, name : String) -> Int {
+  let index = self.next_index
+  self.locals[name] = index
+  self.next_index += 1
+  index
+}
+
+/// 変数名から local index を取得する
+pub fn CodegenContext::resolve(
+  self : CodegenContext,
+  name : String
+) -> Int? {
+  self.locals.get(name)
+}
 
 /// 二項演算子を対応する Wasm オペコードに変換する
 fn binop_to_opcode(op : @ast.BinOp) -> Byte {
@@ -52,7 +94,12 @@ fn binop_to_opcode(op : @ast.BinOp) -> Byte {
 
 /// 式のコード生成: AST の Expr を Wasm 命令列（バイト列）に変換する
 /// code 配列に命令バイトを追記する
-pub fn emit_expr(expr : @ast.Expr, code : Array[Byte]) -> Unit raise CodegenError {
+/// ctx はローカル変数の解決に使用する
+pub fn emit_expr(
+  expr : @ast.Expr,
+  code : Array[Byte],
+  ctx : CodegenContext
+) -> Unit raise CodegenError {
   match expr {
     IntLiteral(n) => {
       code.push(op_i32_const)
@@ -69,25 +116,25 @@ pub fn emit_expr(expr : @ast.Expr, code : Array[Byte]) -> Unit raise CodegenErro
       }
     }
     BinaryOp(op, lhs, rhs) => {
-      emit_expr(lhs, code)
-      emit_expr(rhs, code)
+      emit_expr(lhs, code, ctx)
+      emit_expr(rhs, code, ctx)
       code.push(binop_to_opcode(op))
     }
     UnaryOp(Neg, operand) => {
       // -x → 0 - x
       code.push(op_i32_const)
       code.push(b'\x00')
-      emit_expr(operand, code)
+      emit_expr(operand, code, ctx)
       code.push(op_i32_sub)
     }
     UnaryOp(LogNot, operand) => {
       // !x → x == 0
-      emit_expr(operand, code)
+      emit_expr(operand, code, ctx)
       code.push(op_i32_eqz)
     }
     UnaryOp(BitNot, operand) => {
       // ~x → x ^ -1
-      emit_expr(operand, code)
+      emit_expr(operand, code, ctx)
       code.push(op_i32_const)
       let bytes = @wasm.encode_sleb128(-1)
       for b in bytes {
@@ -95,9 +142,21 @@ pub fn emit_expr(expr : @ast.Expr, code : Array[Byte]) -> Unit raise CodegenErro
       }
       code.push(op_i32_xor)
     }
+    Ident(name) =>
+      match ctx.resolve(name) {
+        Some(index) => {
+          code.push(op_local_get)
+          let bytes = @wasm.encode_uleb128(index)
+          for b in bytes {
+            code.push(b)
+          }
+        }
+        None =>
+          raise CodegenError(
+            "codegen: 未定義の変数 '" + name + "'",
+          )
+      }
     // 以下の式は後続タスクで実装する
-    Ident(_) =>
-      raise CodegenError("codegen: Ident は未実装（ローカル変数タスクで実装）")
     Call(_, _) =>
       raise CodegenError("codegen: Call は未実装（関数呼び出しタスクで実装）")
     Assign(_, _) =>
@@ -108,5 +167,17 @@ pub fn emit_expr(expr : @ast.Expr, code : Array[Byte]) -> Unit raise CodegenErro
       raise CodegenError("codegen: Deref は未実装（Phase 4 で実装）")
     UnaryOp(AddrOf, _) =>
       raise CodegenError("codegen: AddrOf は未実装（Phase 4 で実装）")
+  }
+}
+
+/// local.set 命令を生成するヘルパー関数
+pub fn emit_local_set(
+  index : Int,
+  code : Array[Byte]
+) -> Unit {
+  code.push(op_local_set)
+  let bytes = @wasm.encode_uleb128(index)
+  for b in bytes {
+    code.push(b)
   }
 }
