@@ -1,3 +1,15 @@
 {
-  "is-main": true
+  "is-main": true,
+  "import": [
+    "yast/mucc/src/lib/lexer",
+    "yast/mucc/src/lib/parser",
+    "yast/mucc/src/lib/codegen",
+    "moonbitlang/core/env"
+  ],
+  "native-stub": ["stub.c"],
+  "targets": {
+    "ffi.mbt": ["native"],
+    "main.mbt": ["native"],
+    "main_wasm.mbt": ["not", "native"]
+  }
 }

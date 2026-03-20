@@ -75,7 +75,7 @@
 - [x] return 文: Codegen + `end`
 - [x] 変数宣言と代入: `local.set` / `local.get`
 - [x] 複数関数のコンパイル: function index の管理
-- [ ] .wasm バイナリファイルへの書き出し
+- [x] .wasm バイナリファイルへの書き出し
 
 ### Phase 2 統合テスト
 - [ ] `int main() { return 42; }` → .wasm → wasmtime → exit code 42
