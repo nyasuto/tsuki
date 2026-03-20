@@ -45,7 +45,7 @@
 - [x] 文（Stmt）の enum 定義: Return, VarDecl, ExprStmt, Block, If, While, For
 - [x] トップレベル（TopLevel）の enum 定義: FuncDef, GlobalVarDecl
 - [x] 型（CType）の enum 定義: Int, Char, Void, Ptr(CType), Struct(String), Array(CType, Int)
-- [ ] Program 型の定義: TopLevel のリスト
+- [x] Program 型の定義: TopLevel のリスト
 
 ### Parser 実装
 - [ ] Parser の基本構造（Token 列、位置管理、expect/peek/advance）

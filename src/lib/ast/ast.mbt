@@ -73,3 +73,8 @@ pub(all) enum TopLevel {
   FuncDef(String, String, Array[Param], Stmt)       // 関数定義: 戻り値型, 関数名, パラメータ, 本体(Block)
   GlobalVarDecl(String, String, Expr?)               // グローバル変数宣言: 型名, 変数名, 初期値
 } derive(Show, Eq)
+
+/// プログラム: トップレベル定義のリスト
+pub(all) struct Program {
+  top_levels : Array[TopLevel]
+} derive(Show, Eq)
