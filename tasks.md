@@ -66,7 +66,7 @@
 - [x] Function Section: 関数インデックス → type インデックスのマッピング
 - [x] Memory Section: 線形メモリの宣言（initial 1 page）
 - [x] Export Section: main 関数と memory のエクスポート
-- [ ] Code Section: 関数本体（locals + 命令列）
+- [x] Code Section: 関数本体（locals + 命令列）
 
 ### Codegen 実装
 - [ ] 式の Codegen: IntLit → `i32.const`, BinaryOp → 対応する `i32.xxx` 命令
