@@ -241,6 +241,64 @@ test "parse while missing lparen" {
   )
 }
 
+// === for 文 ===
+
+test "parse for with all three clauses" {
+  let result = parse_stmt_from("for (int i = 0; i < 10; i = i + 1) { x = x + i; }")
+  inspect!(
+    result,
+    content="Ok(For(Some(VarDecl(\"int\", \"i\", Some(IntLiteral(0)))), Some(BinaryOp(Lt, Ident(\"i\"), IntLiteral(10))), Some(Assign(Ident(\"i\"), BinaryOp(Add, Ident(\"i\"), IntLiteral(1)))), Block([ExprStmt(Assign(Ident(\"x\"), BinaryOp(Add, Ident(\"x\"), Ident(\"i\"))))])))",
+  )
+}
+
+test "parse for with empty init" {
+  let result = parse_stmt_from("for (; i < 10; i = i + 1) return i;")
+  inspect!(
+    result,
+    content="Ok(For(None, Some(BinaryOp(Lt, Ident(\"i\"), IntLiteral(10))), Some(Assign(Ident(\"i\"), BinaryOp(Add, Ident(\"i\"), IntLiteral(1)))), Return(Some(Ident(\"i\")))))",
+  )
+}
+
+test "parse for with empty cond" {
+  let result = parse_stmt_from("for (int i = 0; ; i = i + 1) return i;")
+  inspect!(
+    result,
+    content="Ok(For(Some(VarDecl(\"int\", \"i\", Some(IntLiteral(0)))), None, Some(Assign(Ident(\"i\"), BinaryOp(Add, Ident(\"i\"), IntLiteral(1)))), Return(Some(Ident(\"i\")))))",
+  )
+}
+
+test "parse for with empty update" {
+  let result = parse_stmt_from("for (int i = 0; i < 10;) return i;")
+  inspect!(
+    result,
+    content="Ok(For(Some(VarDecl(\"int\", \"i\", Some(IntLiteral(0)))), Some(BinaryOp(Lt, Ident(\"i\"), IntLiteral(10))), None, Return(Some(Ident(\"i\")))))",
+  )
+}
+
+test "parse for with all empty clauses (infinite loop)" {
+  let result = parse_stmt_from("for (;;) return 0;")
+  inspect!(
+    result,
+    content="Ok(For(None, None, None, Return(Some(IntLiteral(0)))))",
+  )
+}
+
+test "parse for with expr init" {
+  let result = parse_stmt_from("for (i = 0; i < 5; i = i + 1) return i;")
+  inspect!(
+    result,
+    content="Ok(For(Some(ExprStmt(Assign(Ident(\"i\"), IntLiteral(0)))), Some(BinaryOp(Lt, Ident(\"i\"), IntLiteral(5))), Some(Assign(Ident(\"i\"), BinaryOp(Add, Ident(\"i\"), IntLiteral(1)))), Return(Some(Ident(\"i\")))))",
+  )
+}
+
+test "parse for missing lparen" {
+  let result = parse_stmt_from("for int i = 0; i < 10; i = i + 1) { }")
+  inspect!(
+    result,
+    content="Err(\"expected LParen, got KwInt at line 1, col 5\")",
+  )
+}
+
 // === 関数定義 ===
 
 /// ヘルパー: ソースコードから関数定義をパースする

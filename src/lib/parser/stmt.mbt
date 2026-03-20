@@ -73,6 +73,8 @@ pub fn Parser::parse_stmt(self : Parser) -> Result[@ast.Stmt, String] {
     KwIf => self.parse_if_stmt()
     // while 文
     KwWhile => self.parse_while_stmt()
+    // for 文
+    KwFor => self.parse_for_stmt()
     // ブロック
     LBrace => self.parse_block()
     // 変数宣言（型キーワードで始まる）
@@ -143,6 +145,64 @@ fn Parser::parse_while_stmt(self : Parser) -> Result[@ast.Stmt, String] {
     Err(e) => return Err(e)
   }
   Ok(@ast.Stmt::While(cond, body))
+}
+
+/// for 文のパース: for (init; cond; update) body
+fn Parser::parse_for_stmt(self : Parser) -> Result[@ast.Stmt, String] {
+  match self.expect(@lexer.Token::KwFor) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  match self.expect(@lexer.Token::LParen) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  // init: 空セミコロン、変数宣言、または式文（いずれもセミコロンを含む）
+  let init : @ast.Stmt? = if self.check(@lexer.Token::Semi) {
+    self.advance() |> ignore
+    None
+  } else if is_type_keyword(self.peek()) {
+    match self.parse_var_decl() {
+      Ok(s) => Some(s)
+      Err(e) => return Err(e)
+    }
+  } else {
+    match self.parse_expr_stmt() {
+      Ok(s) => Some(s)
+      Err(e) => return Err(e)
+    }
+  }
+  // cond: 省略可能（セミコロンだけなら None）
+  let cond : @ast.Expr? = if self.check(@lexer.Token::Semi) {
+    None
+  } else {
+    match self.parse_expr() {
+      Ok(e) => Some(e)
+      Err(e) => return Err(e)
+    }
+  }
+  match self.expect(@lexer.Token::Semi) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  // update: 省略可能（閉じ括弧なら None）
+  let update : @ast.Expr? = if self.check(@lexer.Token::RParen) {
+    None
+  } else {
+    match self.parse_expr() {
+      Ok(e) => Some(e)
+      Err(e) => return Err(e)
+    }
+  }
+  match self.expect(@lexer.Token::RParen) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  let body = match self.parse_stmt() {
+    Ok(s) => s
+    Err(e) => return Err(e)
+  }
+  Ok(@ast.Stmt::For(init, cond, update, body))
 }
 
 /// return 文のパース: return; または return expr;

@@ -98,7 +98,7 @@
 ### Parser 拡張
 - [x] if / else 文のパース
 - [x] while 文のパース
-- [ ] for 文のパース（init; cond; update の3要素）
+- [x] for 文のパース（init; cond; update の3要素）
 - [ ] 比較演算子（==, !=, <, >, <=, >=）の AST ノード確認
 - [ ] 論理演算子（&&, ||）の AST ノード確認
 
