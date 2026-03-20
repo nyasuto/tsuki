@@ -565,3 +565,12 @@ test "snapshot: int main() { return 42; }" {
     content="Ok([{token: KwInt, pos: {line: 1, col: 1}}, {token: Ident(\"main\"), pos: {line: 1, col: 5}}, {token: LParen, pos: {line: 1, col: 9}}, {token: RParen, pos: {line: 1, col: 10}}, {token: LBrace, pos: {line: 1, col: 12}}, {token: KwReturn, pos: {line: 1, col: 14}}, {token: IntLit(42), pos: {line: 1, col: 21}}, {token: Semi, pos: {line: 1, col: 23}}, {token: RBrace, pos: {line: 1, col: 25}}, {token: Eof, pos: {line: 1, col: 26}}])",
   )
 }
+
+test "snapshot: int add(int a, int b) { return a + b; }" {
+  let lexer = @lexer.Lexer::new("int add(int a, int b) { return a + b; }")
+  let result = lexer.tokenize()
+  inspect(
+    result,
+    content="Ok([{token: KwInt, pos: {line: 1, col: 1}}, {token: Ident(\"add\"), pos: {line: 1, col: 5}}, {token: LParen, pos: {line: 1, col: 8}}, {token: KwInt, pos: {line: 1, col: 9}}, {token: Ident(\"a\"), pos: {line: 1, col: 13}}, {token: Comma, pos: {line: 1, col: 14}}, {token: KwInt, pos: {line: 1, col: 16}}, {token: Ident(\"b\"), pos: {line: 1, col: 20}}, {token: RParen, pos: {line: 1, col: 21}}, {token: LBrace, pos: {line: 1, col: 23}}, {token: KwReturn, pos: {line: 1, col: 25}}, {token: Ident(\"a\"), pos: {line: 1, col: 32}}, {token: Plus, pos: {line: 1, col: 34}}, {token: Ident(\"b\"), pos: {line: 1, col: 36}}, {token: Semi, pos: {line: 1, col: 37}}, {token: RBrace, pos: {line: 1, col: 39}}, {token: Eof, pos: {line: 1, col: 40}}])",
+  )
+}
