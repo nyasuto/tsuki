@@ -391,3 +391,39 @@ test "parse member access assignment" {
   let expr = parser.parse_expr()
   inspect(expr, content="Ok(Assign(MemberAccess(Ident(\"p\"), \"x\"), IntLiteral(10)))")
 }
+
+test "parse arrow operator p->field desugars to (*p).field" {
+  let parser = make_parser("p->x")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(MemberAccess(UnaryOp(Deref, Ident(\"p\")), \"x\"))",
+  )
+}
+
+test "parse arrow operator in expression" {
+  let parser = make_parser("p->x + p->y")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(BinaryOp(Add, MemberAccess(UnaryOp(Deref, Ident(\"p\")), \"x\"), MemberAccess(UnaryOp(Deref, Ident(\"p\")), \"y\")))",
+  )
+}
+
+test "parse arrow operator assignment" {
+  let parser = make_parser("p->x = 10")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(Assign(MemberAccess(UnaryOp(Deref, Ident(\"p\")), \"x\"), IntLiteral(10)))",
+  )
+}
+
+test "parse chained arrow operator" {
+  let parser = make_parser("p->next->value")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(MemberAccess(UnaryOp(Deref, MemberAccess(UnaryOp(Deref, Ident(\"p\")), \"next\")), \"value\"))",
+  )
+}
