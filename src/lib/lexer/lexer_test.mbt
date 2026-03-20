@@ -375,3 +375,91 @@ test "scan identifier: stops at non-alnum" {
   inspect(result, content="Ok({token: Ident(\"foo\"), pos: {line: 1, col: 1}})")
   inspect(lexer.pos, content="3")
 }
+
+// --- 演算子と区切り記号のテスト ---
+
+test "scan single-char operators" {
+  let lexer = @lexer.Lexer::new("+-*/%^~")
+  inspect(lexer.next_token(), content="Ok({token: Plus, pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: Minus, pos: {line: 1, col: 2}})")
+  inspect(lexer.next_token(), content="Ok({token: Star, pos: {line: 1, col: 3}})")
+  inspect(lexer.next_token(), content="Ok({token: Slash, pos: {line: 1, col: 4}})")
+  inspect(lexer.next_token(), content="Ok({token: Percent, pos: {line: 1, col: 5}})")
+  inspect(lexer.next_token(), content="Ok({token: Caret, pos: {line: 1, col: 6}})")
+  inspect(lexer.next_token(), content="Ok({token: Tilde, pos: {line: 1, col: 7}})")
+}
+
+test "scan two-char operators: == != <= >= && || << >> ++ -- ->" {
+  let lexer = @lexer.Lexer::new("==!=<=>=&&||<<>>++--->")
+  inspect(lexer.next_token(), content="Ok({token: Eq, pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: Ne, pos: {line: 1, col: 3}})")
+  inspect(lexer.next_token(), content="Ok({token: Le, pos: {line: 1, col: 5}})")
+  inspect(lexer.next_token(), content="Ok({token: Ge, pos: {line: 1, col: 7}})")
+  inspect(lexer.next_token(), content="Ok({token: And, pos: {line: 1, col: 9}})")
+  inspect(lexer.next_token(), content="Ok({token: Or, pos: {line: 1, col: 11}})")
+  inspect(lexer.next_token(), content="Ok({token: Shl, pos: {line: 1, col: 13}})")
+  inspect(lexer.next_token(), content="Ok({token: Shr, pos: {line: 1, col: 15}})")
+  inspect(lexer.next_token(), content="Ok({token: Inc, pos: {line: 1, col: 17}})")
+  inspect(lexer.next_token(), content="Ok({token: Dec, pos: {line: 1, col: 19}})")
+  inspect(lexer.next_token(), content="Ok({token: Arrow, pos: {line: 1, col: 21}})")
+}
+
+test "scan single vs double char disambiguation: = vs ==" {
+  let lexer = @lexer.Lexer::new("=== ")
+  inspect(lexer.next_token(), content="Ok({token: Eq, pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: Assign, pos: {line: 1, col: 3}})")
+}
+
+test "scan single vs double char disambiguation: & vs &&" {
+  let lexer = @lexer.Lexer::new("&&&")
+  inspect(lexer.next_token(), content="Ok({token: And, pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: Amp, pos: {line: 1, col: 3}})")
+}
+
+test "scan single vs double char disambiguation: ! vs !=" {
+  let lexer = @lexer.Lexer::new("!!=")
+  inspect(lexer.next_token(), content="Ok({token: Bang, pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: Ne, pos: {line: 1, col: 2}})")
+}
+
+test "scan single vs double char disambiguation: < vs << vs <=" {
+  let lexer = @lexer.Lexer::new("<<<=<")
+  inspect(lexer.next_token(), content="Ok({token: Shl, pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: Le, pos: {line: 1, col: 3}})")
+  inspect(lexer.next_token(), content="Ok({token: Lt, pos: {line: 1, col: 5}})")
+}
+
+test "scan delimiters" {
+  let lexer = @lexer.Lexer::new("(){}[];,.")
+  inspect(lexer.next_token(), content="Ok({token: LParen, pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: RParen, pos: {line: 1, col: 2}})")
+  inspect(lexer.next_token(), content="Ok({token: LBrace, pos: {line: 1, col: 3}})")
+  inspect(lexer.next_token(), content="Ok({token: RBrace, pos: {line: 1, col: 4}})")
+  inspect(lexer.next_token(), content="Ok({token: LBracket, pos: {line: 1, col: 5}})")
+  inspect(lexer.next_token(), content="Ok({token: RBracket, pos: {line: 1, col: 6}})")
+  inspect(lexer.next_token(), content="Ok({token: Semi, pos: {line: 1, col: 7}})")
+  inspect(lexer.next_token(), content="Ok({token: Comma, pos: {line: 1, col: 8}})")
+  inspect(lexer.next_token(), content="Ok({token: Dot, pos: {line: 1, col: 9}})")
+}
+
+test "scan pipe single vs double: | vs ||" {
+  let lexer = @lexer.Lexer::new("|||")
+  inspect(lexer.next_token(), content="Ok({token: Or, pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: Pipe, pos: {line: 1, col: 3}})")
+}
+
+test "scan > vs >> vs >=" {
+  let lexer = @lexer.Lexer::new(">>>=>" )
+  inspect(lexer.next_token(), content="Ok({token: Shr, pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: Ge, pos: {line: 1, col: 3}})")
+  inspect(lexer.next_token(), content="Ok({token: Gt, pos: {line: 1, col: 5}})")
+}
+
+test "scan minus variants: - vs -- vs ->" {
+  let lexer = @lexer.Lexer::new("--->=->-")
+  inspect(lexer.next_token(), content="Ok({token: Dec, pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: Arrow, pos: {line: 1, col: 3}})")
+  inspect(lexer.next_token(), content="Ok({token: Assign, pos: {line: 1, col: 5}})")
+  inspect(lexer.next_token(), content="Ok({token: Arrow, pos: {line: 1, col: 6}})")
+  inspect(lexer.next_token(), content="Ok({token: Minus, pos: {line: 1, col: 8}})")
+}

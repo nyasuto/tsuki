@@ -253,6 +253,76 @@ fn Lexer::scan_int_lit(self : Lexer) -> Token {
   Token::IntLit(value)
 }
 
+/// 演算子または区切り記号をスキャンする
+fn Lexer::scan_operator_or_punct(self : Lexer) -> Result[Token, String] {
+  let pos = self.current_pos()
+  let ch = self.advance()
+  let next = self.peek()
+  match ch {
+    Some('+') =>
+      match next {
+        Some('+') => { let _ = self.advance(); Ok(Token::Inc) }
+        _ => Ok(Token::Plus)
+      }
+    Some('-') =>
+      match next {
+        Some('-') => { let _ = self.advance(); Ok(Token::Dec) }
+        Some('>') => { let _ = self.advance(); Ok(Token::Arrow) }
+        _ => Ok(Token::Minus)
+      }
+    Some('*') => Ok(Token::Star)
+    Some('/') => Ok(Token::Slash)
+    Some('%') => Ok(Token::Percent)
+    Some('=') =>
+      match next {
+        Some('=') => { let _ = self.advance(); Ok(Token::Eq) }
+        _ => Ok(Token::Assign)
+      }
+    Some('!') =>
+      match next {
+        Some('=') => { let _ = self.advance(); Ok(Token::Ne) }
+        _ => Ok(Token::Bang)
+      }
+    Some('<') =>
+      match next {
+        Some('=') => { let _ = self.advance(); Ok(Token::Le) }
+        Some('<') => { let _ = self.advance(); Ok(Token::Shl) }
+        _ => Ok(Token::Lt)
+      }
+    Some('>') =>
+      match next {
+        Some('=') => { let _ = self.advance(); Ok(Token::Ge) }
+        Some('>') => { let _ = self.advance(); Ok(Token::Shr) }
+        _ => Ok(Token::Gt)
+      }
+    Some('&') =>
+      match next {
+        Some('&') => { let _ = self.advance(); Ok(Token::And) }
+        _ => Ok(Token::Amp)
+      }
+    Some('|') =>
+      match next {
+        Some('|') => { let _ = self.advance(); Ok(Token::Or) }
+        _ => Ok(Token::Pipe)
+      }
+    Some('^') => Ok(Token::Caret)
+    Some('~') => Ok(Token::Tilde)
+    Some('(') => Ok(Token::LParen)
+    Some(')') => Ok(Token::RParen)
+    Some('{') => Ok(Token::LBrace)
+    Some('}') => Ok(Token::RBrace)
+    Some('[') => Ok(Token::LBracket)
+    Some(']') => Ok(Token::RBracket)
+    Some(';') => Ok(Token::Semi)
+    Some(',') => Ok(Token::Comma)
+    Some('.') => Ok(Token::Dot)
+    Some(c) =>
+      Err("unexpected character '\{c}' at line \{pos.line}, col \{pos.col}")
+    None =>
+      Err("unexpected end of input at line \{pos.line}, col \{pos.col}")
+  }
+}
+
 /// 次のトークンを読み取る
 pub fn Lexer::next_token(self : Lexer) -> Result[LocToken, String] {
   if self.is_eof() {
@@ -279,7 +349,10 @@ pub fn Lexer::next_token(self : Lexer) -> Result[LocToken, String] {
         let token = self.scan_ident_or_keyword()
         Ok(LocToken::{ token, pos })
       } else {
-        Err("unexpected character '\{ch}' at line \{pos.line}, col \{pos.col}")
+        match self.scan_operator_or_punct() {
+          Ok(token) => Ok(LocToken::{ token, pos })
+          Err(e) => Err(e)
+        }
       }
     None => Ok(LocToken::{ token: Token::Eof, pos })
   }
