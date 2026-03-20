@@ -41,6 +41,17 @@ pub(all) enum Token {
   Inc        // ++
   Dec        // --
   Assign     // =
+  // 区切り記号
+  LParen     // (
+  RParen     // )
+  LBrace     // {
+  RBrace     // }
+  LBracket   // [
+  RBracket   // ]
+  Semi       // ;
+  Comma      // ,
+  Dot        // .
+  Arrow      // ->
   // ファイル終端
   Eof
 } derive(Show, Eq)

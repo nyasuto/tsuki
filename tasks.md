@@ -17,7 +17,7 @@
 ### Lexer 実装
 - [x] Token 型を enum で定義（キーワード: int, char, void, struct, if, else, while, for, return, sizeof）
 - [x] Token 型に演算子を追加（+, -, *, /, %, ==, !=, <, >, <=, >=, &&, ||, &, |, ^, <<, >>, !, ~, ++, --）
-- [ ] Token 型に区切り記号を追加（(, ), {, }, [, ], ;, ,, ., ->）
+- [x] Token 型に区切り記号を追加（(, ), {, }, [, ], ;, ,, ., ->）
 - [ ] Token 型にリテラルと識別子を追加（IntLit, CharLit, StringLit, Ident）
 - [ ] Lexer の基本構造を実装（入力文字列、位置管理、peek/advance）
 - [ ] 整数リテラルのスキャン
