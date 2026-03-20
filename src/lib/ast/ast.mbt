@@ -37,6 +37,10 @@ pub(all) enum UnaryOp {
   BitNot    // ~
   Deref     // *
   AddrOf    // &
+  PreInc    // ++x（前置インクリメント）
+  PreDec    // --x（前置デクリメント）
+  PostInc   // x++（後置インクリメント）
+  PostDec   // x--（後置デクリメント）
 } derive(Show, Eq)
 
 /// 式

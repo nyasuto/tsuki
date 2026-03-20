@@ -999,3 +999,73 @@ test "compile_program: function with locals" {
   inspect(bytes_to_hex(Array::from_iter(wasm[0:8].iter())), content="00 61 73 6D 01 00 00 00")
   inspect(wasm.length() > 20, content="true")
 }
+
+// === 前置/後置インクリメント・デクリメントテスト ===
+
+/// ++x: local.get 0; i32.const 1; i32.add; local.tee 0
+test "emit_expr: prefix increment" {
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "x" }],
+  )
+  let code : Array[Byte] = []
+  emit_expr(@ast.UnaryOp(PreInc, @ast.Ident("x")), code, ctx)
+  // local.get 0 (20 00); i32.const 1 (41 01); i32.add (6A); local.tee 0 (22 00)
+  inspect(bytes_to_hex(code), content="20 00 41 01 6A 22 00")
+}
+
+/// --x: local.get 0; i32.const 1; i32.sub; local.tee 0
+test "emit_expr: prefix decrement" {
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "x" }],
+  )
+  let code : Array[Byte] = []
+  emit_expr(@ast.UnaryOp(PreDec, @ast.Ident("x")), code, ctx)
+  // local.get 0 (20 00); i32.const 1 (41 01); i32.sub (6B); local.tee 0 (22 00)
+  inspect(bytes_to_hex(code), content="20 00 41 01 6B 22 00")
+}
+
+/// x++: local.get 0（元の値）; local.get 0; i32.const 1; i32.add; local.set 0
+test "emit_expr: postfix increment" {
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "x" }],
+  )
+  let code : Array[Byte] = []
+  emit_expr(@ast.UnaryOp(PostInc, @ast.Ident("x")), code, ctx)
+  // local.get 0 (20 00); local.get 0 (20 00); i32.const 1 (41 01); i32.add (6A); local.set 0 (21 00)
+  inspect(bytes_to_hex(code), content="20 00 20 00 41 01 6A 21 00")
+}
+
+/// x--: local.get 0（元の値）; local.get 0; i32.const 1; i32.sub; local.set 0
+test "emit_expr: postfix decrement" {
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "x" }],
+  )
+  let code : Array[Byte] = []
+  emit_expr(@ast.UnaryOp(PostDec, @ast.Ident("x")), code, ctx)
+  // local.get 0 (20 00); local.get 0 (20 00); i32.const 1 (41 01); i32.sub (6B); local.set 0 (21 00)
+  inspect(bytes_to_hex(code), content="20 00 20 00 41 01 6B 21 00")
+}
+
+/// ++x（未定義変数）はエラーになる
+test "emit_expr: prefix increment undefined var error" {
+  let ctx = CodegenContext::new()
+  let code : Array[Byte] = []
+  let result : Result[Unit, Error] = try {
+    Ok(emit_expr(@ast.UnaryOp(PreInc, @ast.Ident("x")), code, ctx))
+  } catch {
+    e => Err(e)
+  }
+  inspect(result is Err(_), content="true")
+}
+
+/// ++（非変数）はエラーになる
+test "emit_expr: prefix increment non-ident error" {
+  let ctx = CodegenContext::new()
+  let code : Array[Byte] = []
+  let result : Result[Unit, Error] = try {
+    Ok(emit_expr(@ast.UnaryOp(PreInc, @ast.IntLiteral(1)), code, ctx))
+  } catch {
+    e => Err(e)
+  }
+  inspect(result is Err(_), content="true")
+}

@@ -61,6 +61,8 @@ fn prefix_binding_power(token : @lexer.Token) -> Int? {
     Tilde => Some(23)   // ~x
     Star => Some(23)    // *x (間接参照)
     Amp => Some(23)     // &x (アドレス取得)
+    Inc => Some(23)     // ++x (前置インクリメント)
+    Dec => Some(23)     // --x (前置デクリメント)
     _ => None
   }
 }
@@ -73,6 +75,8 @@ fn token_to_unaryop(token : @lexer.Token) -> @ast.UnaryOp? {
     Tilde => Some(BitNot)
     Star => Some(Deref)
     Amp => Some(AddrOf)
+    Inc => Some(PreInc)
+    Dec => Some(PreDec)
     _ => None
   }
 }
@@ -158,9 +162,21 @@ fn Parser::parse_expr_bp(
       }
     }
   }
-  // 中置演算子のループ
+  // 中置演算子・後置演算子のループ
   while true {
     let op_token = self.peek()
+    // 後置 ++/-- の処理（結合力 25: 前置より高い）
+    let postfix_bp = 25
+    if op_token == @lexer.Token::Inc && postfix_bp >= min_bp {
+      self.advance() |> ignore
+      lhs = @ast.Expr::UnaryOp(PostInc, lhs)
+      continue
+    }
+    if op_token == @lexer.Token::Dec && postfix_bp >= min_bp {
+      self.advance() |> ignore
+      lhs = @ast.Expr::UnaryOp(PostDec, lhs)
+      continue
+    }
     let should_continue = match infix_binding_power(op_token) {
       None => false
       Some((lbp, _)) => lbp >= min_bp

@@ -109,7 +109,7 @@
 - [x] for → while への AST レベル変換（desugar）
 - [x] 短絡評価: && → if(lhs, rhs, 0), || → if(lhs, 1, rhs) パターン
 - [x] ビット演算: `i32.and`, `i32.or`, `i32.xor`, `i32.shl`, `i32.shr_s`
-- [ ] 前置 ++/-- および後置 ++/-- の Codegen
+- [x] 前置 ++/-- および後置 ++/-- の Codegen
 
 ### Phase 3 統合テスト
 - [ ] if/else: `int abs(int x) { if (x < 0) return -x; else return x; }` → abs(-5) == 5

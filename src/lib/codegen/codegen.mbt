@@ -255,6 +255,112 @@ pub fn emit_expr(
       raise CodegenError("codegen: 左辺値が変数ではありません（ポインタ代入は Phase 4 で実装）")
     StringLiteral(_) =>
       raise CodegenError("codegen: StringLiteral は未実装（Phase 5 で実装）")
+    UnaryOp(PreInc, Ident(name)) =>
+      // ++x: x = x + 1; 新しい値を返す
+      match ctx.resolve(name) {
+        Some(index) => {
+          code.push(op_local_get)
+          let bytes = @wasm.encode_uleb128(index)
+          for b in bytes {
+            code.push(b)
+          }
+          code.push(op_i32_const)
+          code.push(b'\x01')
+          code.push(op_i32_add)
+          code.push(op_local_tee)
+          let bytes2 = @wasm.encode_uleb128(index)
+          for b in bytes2 {
+            code.push(b)
+          }
+        }
+        None =>
+          raise CodegenError(
+            "codegen: 未定義の変数 '" + name + "'",
+          )
+      }
+    UnaryOp(PreDec, Ident(name)) =>
+      // --x: x = x - 1; 新しい値を返す
+      match ctx.resolve(name) {
+        Some(index) => {
+          code.push(op_local_get)
+          let bytes = @wasm.encode_uleb128(index)
+          for b in bytes {
+            code.push(b)
+          }
+          code.push(op_i32_const)
+          code.push(b'\x01')
+          code.push(op_i32_sub)
+          code.push(op_local_tee)
+          let bytes2 = @wasm.encode_uleb128(index)
+          for b in bytes2 {
+            code.push(b)
+          }
+        }
+        None =>
+          raise CodegenError(
+            "codegen: 未定義の変数 '" + name + "'",
+          )
+      }
+    UnaryOp(PostInc, Ident(name)) =>
+      // x++: 元の値を返し、x = x + 1 にする
+      match ctx.resolve(name) {
+        Some(index) => {
+          // 元の値をスタックに積む（返り値）
+          code.push(op_local_get)
+          let bytes = @wasm.encode_uleb128(index)
+          for b in bytes {
+            code.push(b)
+          }
+          // x + 1 を計算して local に書き戻す
+          code.push(op_local_get)
+          let bytes2 = @wasm.encode_uleb128(index)
+          for b in bytes2 {
+            code.push(b)
+          }
+          code.push(op_i32_const)
+          code.push(b'\x01')
+          code.push(op_i32_add)
+          emit_local_set(index, code)
+        }
+        None =>
+          raise CodegenError(
+            "codegen: 未定義の変数 '" + name + "'",
+          )
+      }
+    UnaryOp(PostDec, Ident(name)) =>
+      // x--: 元の値を返し、x = x - 1 にする
+      match ctx.resolve(name) {
+        Some(index) => {
+          // 元の値をスタックに積む（返り値）
+          code.push(op_local_get)
+          let bytes = @wasm.encode_uleb128(index)
+          for b in bytes {
+            code.push(b)
+          }
+          // x - 1 を計算して local に書き戻す
+          code.push(op_local_get)
+          let bytes2 = @wasm.encode_uleb128(index)
+          for b in bytes2 {
+            code.push(b)
+          }
+          code.push(op_i32_const)
+          code.push(b'\x01')
+          code.push(op_i32_sub)
+          emit_local_set(index, code)
+        }
+        None =>
+          raise CodegenError(
+            "codegen: 未定義の変数 '" + name + "'",
+          )
+      }
+    UnaryOp(PreInc, _) =>
+      raise CodegenError("codegen: ++のオペランドは変数でなければなりません")
+    UnaryOp(PreDec, _) =>
+      raise CodegenError("codegen: --のオペランドは変数でなければなりません")
+    UnaryOp(PostInc, _) =>
+      raise CodegenError("codegen: ++のオペランドは変数でなければなりません")
+    UnaryOp(PostDec, _) =>
+      raise CodegenError("codegen: --のオペランドは変数でなければなりません")
     UnaryOp(Deref, _) =>
       raise CodegenError("codegen: Deref は未実装（Phase 4 で実装）")
     UnaryOp(AddrOf, _) =>

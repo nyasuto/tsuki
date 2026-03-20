@@ -293,3 +293,44 @@ test "parse error on unexpected token" {
     content="Err(\"unexpected token Semi at line 1, col 1\")",
   )
 }
+
+test "parse prefix increment" {
+  let parser = make_parser("++x")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(UnaryOp(PreInc, Ident(\"x\")))")
+}
+
+test "parse prefix decrement" {
+  let parser = make_parser("--y")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(UnaryOp(PreDec, Ident(\"y\")))")
+}
+
+test "parse postfix increment" {
+  let parser = make_parser("x++")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(UnaryOp(PostInc, Ident(\"x\")))")
+}
+
+test "parse postfix decrement" {
+  let parser = make_parser("y--")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(UnaryOp(PostDec, Ident(\"y\")))")
+}
+
+test "parse postfix has higher precedence than prefix" {
+  // ++x++ は (++x)++ ではなく ++(x++) と解釈される？
+  // C の仕様では後置が前置より優先順位が高い
+  let parser = make_parser("++x++")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(UnaryOp(PreInc, UnaryOp(PostInc, Ident(\"x\"))))")
+}
+
+test "parse postfix increment in expression" {
+  let parser = make_parser("x++ + 1")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(BinaryOp(Add, UnaryOp(PostInc, Ident(\"x\")), IntLiteral(1)))",
+  )
+}
