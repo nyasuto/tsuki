@@ -33,9 +33,13 @@ let op_return : Byte = b'\x0F'
 let op_local_tee : Byte = b'\x22'
 
 /// 制御フロー命令のオペコード
+let op_block : Byte = b'\x02'
+let op_loop : Byte = b'\x03'
 let op_if : Byte = b'\x04'
 let op_else : Byte = b'\x05'
 let op_end : Byte = b'\x0B'
+let op_br : Byte = b'\x0C'
+let op_br_if : Byte = b'\x0D'
 
 /// ブロックタイプ: void（値を返さない）
 let blocktype_void : Byte = b'\x40'
@@ -293,8 +297,29 @@ pub fn emit_stmt(
       // end
       code.push(op_end)
     }
-    While(_, _) =>
-      raise CodegenError("codegen: While は未実装（Phase 3 で実装）")
+    While(cond, body) => {
+      // block $break
+      code.push(op_block)
+      code.push(blocktype_void)
+      // loop $continue
+      code.push(op_loop)
+      code.push(blocktype_void)
+      // 条件式を評価
+      emit_expr(cond, code, ctx)
+      // 条件が偽（0）なら外側の block を抜ける
+      code.push(op_i32_eqz)
+      code.push(op_br_if)
+      code.push(b'\x01') // depth 1: 外側の block へ
+      // ループ本体
+      emit_stmt(body, code, ctx)
+      // loop の先頭に戻る
+      code.push(op_br)
+      code.push(b'\x00') // depth 0: 内側の loop へ
+      // end (loop)
+      code.push(op_end)
+      // end (block)
+      code.push(op_end)
+    }
     For(_, _, _, _) =>
       raise CodegenError("codegen: For は未実装（Phase 3 で実装）")
   }

@@ -763,6 +763,89 @@ test "compile_program: function with if/else" {
   inspect(wasm.length() > 20, content="true")
 }
 
+// === while 文テスト ===
+
+/// while (x > 0) { x = x - 1; } → block + loop + cond + br_if + body + br + end + end
+test "emit_stmt: while loop" {
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "x" }],
+  )
+  let code : Array[Byte] = []
+  emit_stmt(
+    @ast.While(
+      @ast.BinaryOp(Gt, @ast.Ident("x"), @ast.IntLiteral(0)),
+      @ast.Block(
+        [
+          @ast.ExprStmt(
+            @ast.Assign(@ast.Ident("x"), @ast.BinaryOp(Sub, @ast.Ident("x"), @ast.IntLiteral(1))),
+          ),
+        ],
+      ),
+    ),
+    code,
+    ctx,
+  )
+  // block void; loop void; local.get 0; i32.const 0; i32.gt_s; i32.eqz; br_if 1;
+  // local.get 0; i32.const 1; i32.sub; local.set 0; br 0; end; end
+  inspect(
+    bytes_to_hex(code),
+    content="02 40 03 40 20 00 41 00 4A 45 0D 01 20 00 41 01 6B 22 00 1A 0C 00 0B 0B",
+  )
+}
+
+/// 階乗計算: while ループを含む関数の compile_program テスト
+test "compile_program: function with while loop (factorial)" {
+  let program : @ast.Program = {
+    top_levels: [
+      @ast.FuncDef(
+        "int",
+        "fact",
+        [{ type_name: "int", name: "n" }],
+        @ast.Block(
+          [
+            @ast.VarDecl("int", "result", Some(@ast.IntLiteral(1))),
+            @ast.While(
+              @ast.BinaryOp(Gt, @ast.Ident("n"), @ast.IntLiteral(0)),
+              @ast.Block(
+                [
+                  @ast.ExprStmt(
+                    @ast.Assign(
+                      @ast.Ident("result"),
+                      @ast.BinaryOp(Mul, @ast.Ident("result"), @ast.Ident("n")),
+                    ),
+                  ),
+                  @ast.ExprStmt(
+                    @ast.Assign(
+                      @ast.Ident("n"),
+                      @ast.BinaryOp(Sub, @ast.Ident("n"), @ast.IntLiteral(1)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            @ast.Return(Some(@ast.Ident("result"))),
+          ],
+        ),
+      ),
+      @ast.FuncDef(
+        "int",
+        "main",
+        [],
+        @ast.Block(
+          [
+            @ast.Return(
+              Some(@ast.Call("fact", [@ast.IntLiteral(5)])),
+            ),
+          ],
+        ),
+      ),
+    ],
+  }
+  let wasm = compile_program(program)
+  inspect(bytes_to_hex(Array::from_iter(wasm[0:8].iter())), content="00 61 73 6D 01 00 00 00")
+  inspect(wasm.length() > 20, content="true")
+}
+
 /// ローカル変数を持つ関数のコンパイル
 test "compile_program: function with locals" {
   let program : @ast.Program = {
