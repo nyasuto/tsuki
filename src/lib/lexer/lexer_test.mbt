@@ -463,3 +463,96 @@ test "scan minus variants: - vs -- vs ->" {
   inspect(lexer.next_token(), content="Ok({token: Arrow, pos: {line: 1, col: 6}})")
   inspect(lexer.next_token(), content="Ok({token: Minus, pos: {line: 1, col: 8}})")
 }
+
+// --- ホワイトスペースとコメントのテスト ---
+
+test "skip whitespace: spaces and tabs" {
+  let lexer = @lexer.Lexer::new("   42")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(42), pos: {line: 1, col: 4}})")
+}
+
+test "skip whitespace: newlines update line number" {
+  let lexer = @lexer.Lexer::new("\n\n42")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(42), pos: {line: 3, col: 1}})")
+}
+
+test "skip whitespace: mixed whitespace" {
+  let lexer = @lexer.Lexer::new("  \t\n  foo")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: Ident(\"foo\"), pos: {line: 2, col: 3}})")
+}
+
+test "skip whitespace: only whitespace gives Eof" {
+  let lexer = @lexer.Lexer::new("   \n\t  ")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: Eof, pos: {line: 2, col: 4}})")
+}
+
+test "skip line comment: basic" {
+  let lexer = @lexer.Lexer::new("// comment\n42")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(42), pos: {line: 2, col: 1}})")
+}
+
+test "skip line comment: at end of file" {
+  let lexer = @lexer.Lexer::new("// comment")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: Eof, pos: {line: 1, col: 11}})")
+}
+
+test "skip line comment: preserves following token" {
+  let lexer = @lexer.Lexer::new("int // type\nfoo")
+  inspect(lexer.next_token(), content="Ok({token: KwInt, pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: Ident(\"foo\"), pos: {line: 2, col: 1}})")
+}
+
+test "skip block comment: basic" {
+  let lexer = @lexer.Lexer::new("/* comment */42")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(42), pos: {line: 1, col: 14}})")
+}
+
+test "skip block comment: multiline" {
+  let lexer = @lexer.Lexer::new("/* line1\nline2 */foo")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: Ident(\"foo\"), pos: {line: 2, col: 9}})")
+}
+
+test "skip block comment: unterminated error" {
+  let lexer = @lexer.Lexer::new("/* unterminated")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Err(\"unterminated block comment at line 1, col 1\")",
+  )
+}
+
+test "skip block comment: with stars inside" {
+  let lexer = @lexer.Lexer::new("/*** comment ***/42")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(42), pos: {line: 1, col: 18}})")
+}
+
+test "skip mixed whitespace and comments" {
+  let lexer = @lexer.Lexer::new("  // first\n  /* second */ return")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: KwReturn, pos: {line: 2, col: 16}})")
+}
+
+test "slash token not confused with comment" {
+  let lexer = @lexer.Lexer::new("a / b")
+  inspect(lexer.next_token(), content="Ok({token: Ident(\"a\"), pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: Slash, pos: {line: 1, col: 3}})")
+  inspect(lexer.next_token(), content="Ok({token: Ident(\"b\"), pos: {line: 1, col: 5}})")
+}
+
+test "tokenize with whitespace: int main" {
+  let lexer = @lexer.Lexer::new("int main")
+  let result = lexer.tokenize()
+  inspect(
+    result,
+    content="Ok([{token: KwInt, pos: {line: 1, col: 1}}, {token: Ident(\"main\"), pos: {line: 1, col: 5}}, {token: Eof, pos: {line: 1, col: 9}}])",
+  )
+}

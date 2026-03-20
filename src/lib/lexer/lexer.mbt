@@ -323,8 +323,78 @@ fn Lexer::scan_operator_or_punct(self : Lexer) -> Result[Token, String] {
   }
 }
 
+/// ホワイトスペースとコメント（// 行コメント、/* ブロックコメント */）をスキップする
+fn Lexer::skip_whitespace_and_comments(self : Lexer) -> Result[Unit, String] {
+  while not(self.is_eof()) {
+    match self.peek() {
+      Some(' ') | Some('\t') | Some('\n') | Some('\r') => {
+        let _ = self.advance()
+      }
+      Some('/') =>
+        match self.peek_ahead(1) {
+          Some('/') => {
+            // 行コメント: 行末または EOF まで読み飛ばす
+            let _ = self.advance() // '/'
+            let _ = self.advance() // '/'
+            while not(self.is_eof()) {
+              match self.peek() {
+                Some('\n') => {
+                  let _ = self.advance()
+                  break
+                }
+                Some(_) => {
+                  let _ = self.advance()
+                }
+                None => break
+              }
+            }
+          }
+          Some('*') => {
+            // ブロックコメント: */ まで読み飛ばす
+            let start_pos = self.current_pos()
+            let _ = self.advance() // '/'
+            let _ = self.advance() // '*'
+            let mut closed = false
+            while not(self.is_eof()) {
+              match self.peek() {
+                Some('*') =>
+                  match self.peek_ahead(1) {
+                    Some('/') => {
+                      let _ = self.advance() // '*'
+                      let _ = self.advance() // '/'
+                      closed = true
+                      break
+                    }
+                    _ => {
+                      let _ = self.advance()
+                    }
+                  }
+                Some(_) => {
+                  let _ = self.advance()
+                }
+                None => break
+              }
+            }
+            if not(closed) {
+              return Err(
+                "unterminated block comment at line \{start_pos.line}, col \{start_pos.col}",
+              )
+            }
+          }
+          _ => break // '/' だが '//' でも '/*' でもない → 演算子
+        }
+      _ => break
+    }
+  }
+  Ok(())
+}
+
 /// 次のトークンを読み取る
 pub fn Lexer::next_token(self : Lexer) -> Result[LocToken, String] {
+  match self.skip_whitespace_and_comments() {
+    Err(e) => return Err(e)
+    Ok(_) => ()
+  }
   if self.is_eof() {
     let pos = self.current_pos()
     return Ok(LocToken::{ token: Token::Eof, pos })
