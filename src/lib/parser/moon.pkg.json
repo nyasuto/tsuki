@@ -1,1 +1,6 @@
-{}
+{
+  "import": [
+    "yast/mucc/src/lib/lexer",
+    "yast/mucc/src/lib/ast"
+  ]
+}

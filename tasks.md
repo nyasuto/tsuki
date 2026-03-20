@@ -48,7 +48,7 @@
 - [x] Program 型の定義: TopLevel のリスト
 
 ### Parser 実装
-- [ ] Parser の基本構造（Token 列、位置管理、expect/peek/advance）
+- [x] Parser の基本構造（Token 列、位置管理、expect/peek/advance）
 - [ ] 式のパース: プラット法または再帰下降で優先順位を処理
 - [ ] 一次式: 整数リテラル、識別子、括弧式、関数呼び出し
 - [ ] 単項演算: -, !, ~, *, &
