@@ -1,8 +1,8 @@
 # µCC (Tsuki) — Task Tracker
 
-> Ralph Loop 用タスク管理ファイル  
-> 各タスクの `[ ]` を `[x]` に変更して進捗を記録する  
-> 全フェーズ完了時に `🏁 ALL DONE` を末尾に追記する
+> Ralph Loop 用タスク管理ファイル
+> 各タスクの `[ ]` を `[x]` に変更して進捗を記録する
+> ループの終了判定はスクリプト側で自動的に行うため、完了マーカーの追記は不要
 
 ---
 
@@ -15,7 +15,7 @@
 - [x] CLAUDE.md をプロジェクトルートに配置
 
 ### Lexer 実装
-- [ ] Token 型を enum で定義（キーワード: int, char, void, struct, if, else, while, for, return, sizeof）
+- [x] Token 型を enum で定義（キーワード: int, char, void, struct, if, else, while, for, return, sizeof）
 - [ ] Token 型に演算子を追加（+, -, *, /, %, ==, !=, <, >, <=, >=, &&, ||, &, |, ^, <<, >>, !, ~, ++, --）
 - [ ] Token 型に区切り記号を追加（(, ), {, }, [, ], ;, ,, ., ->）
 - [ ] Token 型にリテラルと識別子を追加（IntLit, CharLit, StringLit, Ident）
@@ -230,5 +230,3 @@
 
 ---
 
-<!-- 全フェーズ完了時にこの行のコメントを外す -->
-<!-- 🏁 ALL DONE -->
