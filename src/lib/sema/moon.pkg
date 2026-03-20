@@ -1,0 +1,3 @@
+import {
+  "yast/mucc/src/lib/ast" @ast,
+}

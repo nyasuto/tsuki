@@ -1,0 +1,4 @@
+import {
+  "yast/mucc/src/lib/ast" @ast,
+  "yast/mucc/src/lib/wasm" @wasm,
+}
