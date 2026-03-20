@@ -1245,3 +1245,48 @@ test "emit_stmt: non-addr-taken var uses wasm local" {
   inspect(ctx.is_stack_var("y"), content="false")
   inspect(ctx.frame_size, content="0")
 }
+
+/// &x（アドレス取得）: スタック変数のアドレスを計算する
+test "emit_expr: addr_of stack variable" {
+  let code : Array[Byte] = []
+  let ctx = @codegen.CodegenContext::new()
+  // 変数 x をアドレス取得対象にマークし、スタック変数として登録
+  ctx.addr_taken["x"] = true
+  @codegen.emit_stmt(@ast.VarDecl("int", "x", Some(@ast.IntLiteral(42))), code, ctx)
+  // &x を生成
+  let addr_code : Array[Byte] = []
+  @codegen.emit_expr(@ast.UnaryOp(AddrOf, @ast.Ident("x")), addr_code, ctx)
+  // global.get $sp (23 00) + i32.const 0 (41 00) + i32.add (6A)
+  inspect(bytes_to_hex(addr_code), content="23 00 41 00 6A")
+}
+
+/// &x: スタック変数でない変数に対するエラー
+test "emit_expr: addr_of non-stack variable raises error" {
+  let code : Array[Byte] = []
+  let ctx = @codegen.CodegenContext::new()
+  // x はスタック変数として登録されていない
+  let result : Result[Unit, Error] = try {
+    Ok(@codegen.emit_expr(@ast.UnaryOp(AddrOf, @ast.Ident("x")), code, ctx))
+  } catch {
+    e => Err(e)
+  }
+  inspect(result is Err(_), content="true")
+}
+
+/// &(expr): 変数以外へのAddrOfはエラー
+test "emit_expr: addr_of non-variable raises error" {
+  let code : Array[Byte] = []
+  let ctx = @codegen.CodegenContext::new()
+  let result : Result[Unit, Error] = try {
+    Ok(
+      @codegen.emit_expr(
+        @ast.UnaryOp(AddrOf, @ast.IntLiteral(42)),
+        code,
+        ctx,
+      ),
+    )
+  } catch {
+    e => Err(e)
+  }
+  inspect(result is Err(_), content="true")
+}

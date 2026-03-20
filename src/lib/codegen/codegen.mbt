@@ -707,8 +707,16 @@ pub fn emit_expr(
       raise CodegenError("codegen: --のオペランドは変数でなければなりません")
     UnaryOp(Deref, _) =>
       raise CodegenError("codegen: Deref は未実装（Phase 4 で実装）")
+    UnaryOp(AddrOf, Ident(name)) =>
+      match ctx.stack_vars.get(name) {
+        Some(offset) => emit_stack_addr(offset, code)
+        None =>
+          raise CodegenError(
+            "codegen: &\{name} のアドレスを取れません（スタック変数ではありません）",
+          )
+      }
     UnaryOp(AddrOf, _) =>
-      raise CodegenError("codegen: AddrOf は未実装（Phase 4 で実装）")
+      raise CodegenError("codegen: AddrOf のオペランドは変数でなければなりません")
   }
 }
 
