@@ -72,10 +72,17 @@ pub(all) struct Param {
   name : String
 } derive(Show, Eq)
 
+/// 構造体フィールド: 型名とフィールド名のペア
+pub(all) struct StructField {
+  type_name : String
+  name : String
+} derive(Show, Eq)
+
 /// トップレベル定義
 pub(all) enum TopLevel {
   FuncDef(String, String, Array[Param], Stmt)       // 関数定義: 戻り値型, 関数名, パラメータ, 本体(Block)
   GlobalVarDecl(String, String, Expr?)               // グローバル変数宣言: 型名, 変数名, 初期値
+  StructDef(String, Array[StructField])              // 構造体定義: 構造体名, フィールドリスト
 } derive(Show, Eq)
 
 /// プログラム: トップレベル定義のリスト

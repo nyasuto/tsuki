@@ -429,3 +429,29 @@ test "parse program: empty program" {
     #|Ok({top_levels: []})
   ))
 }
+
+test "parse program: struct definition" {
+  let result = parse_program_from(
+    "struct Point { int x; int y; }; int main() { return 0; }",
+  )
+  inspect!(result, content=(
+    #|Ok({top_levels: [StructDef("Point", [{type_name: "int", name: "x"}, {type_name: "int", name: "y"}]), FuncDef("int", "main", [], Block([Return(Some(IntLiteral(0)))]))]})
+  ))
+}
+
+test "parse program: struct with pointer field" {
+  let result = parse_program_from(
+    "struct Node { int value; int* next; }; int main() { return 0; }",
+  )
+  inspect!(result, content=(
+    #|Ok({top_levels: [StructDef("Node", [{type_name: "int", name: "value"}, {type_name: "int*", name: "next"}]), FuncDef("int", "main", [], Block([Return(Some(IntLiteral(0)))]))]})
+  ))
+}
+
+test "parse program: struct return type function" {
+  // struct Point* get_point() { ... } のような関数は構造体定義ではない
+  let result = parse_program_from(
+    "struct Point { int x; }; struct Point* get() { return 0; } int main() { return 0; }",
+  )
+  inspect!(result.is_ok(), content="true")
+}

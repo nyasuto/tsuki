@@ -190,3 +190,117 @@ test "SymbolTable: simulate function scope chain" {
   inspect(st.lookup("a").is_empty(), content="true")
   inspect(st.lookup("add").is_empty(), content="false")
 }
+
+// === resolve_type_name: 構造体型 ===
+
+test "resolve_type_name: struct Point" {
+  inspect(resolve_type_name("struct Point"), content="Ok(Struct(\"Point\"))")
+}
+
+test "resolve_type_name: struct Point*" {
+  inspect(
+    resolve_type_name("struct Point*"),
+    content="Ok(Ptr(Struct(\"Point\")))",
+  )
+}
+
+// === 構造体レジストリのテスト ===
+
+test "SymbolTable: register and lookup struct" {
+  let st = SymbolTable::new()
+  let fields : Array[@ast.StructField] = [
+    { type_name: "int", name: "x" },
+    { type_name: "int", name: "y" },
+  ]
+  let result = st.register_struct("Point", fields)
+  inspect(
+    result,
+    content="Ok({name: \"Point\", fields: [{name: \"x\", field_type: Int, offset: 0}, {name: \"y\", field_type: Int, offset: 4}], total_size: 8})",
+  )
+  inspect(st.lookup_struct("Point").is_empty(), content="false")
+}
+
+test "SymbolTable: struct with char and int fields (alignment)" {
+  let st = SymbolTable::new()
+  let fields : Array[@ast.StructField] = [
+    { type_name: "char", name: "c" },
+    { type_name: "int", name: "n" },
+  ]
+  let result = st.register_struct("Mixed", fields)
+  // char は 1 バイトだが、次のフィールドは 4 バイトアライメントで offset 4
+  inspect(
+    result,
+    content="Ok({name: \"Mixed\", fields: [{name: \"c\", field_type: Char, offset: 0}, {name: \"n\", field_type: Int, offset: 4}], total_size: 8})",
+  )
+}
+
+test "SymbolTable: struct with pointer field" {
+  let st = SymbolTable::new()
+  let fields : Array[@ast.StructField] = [
+    { type_name: "int", name: "value" },
+    { type_name: "int*", name: "next" },
+  ]
+  let result = st.register_struct("Node", fields)
+  inspect(
+    result,
+    content="Ok({name: \"Node\", fields: [{name: \"value\", field_type: Int, offset: 0}, {name: \"next\", field_type: Ptr(Int), offset: 4}], total_size: 8})",
+  )
+}
+
+test "SymbolTable: struct redefinition is error" {
+  let st = SymbolTable::new()
+  let fields : Array[@ast.StructField] = [{ type_name: "int", name: "x" }]
+  let _ = st.register_struct("Point", fields)
+  inspect(
+    st.register_struct("Point", fields),
+    content="Err(\"redefinition of struct 'Point'\")",
+  )
+}
+
+test "SymbolTable: lookup undefined struct returns None" {
+  let st = SymbolTable::new()
+  inspect(st.lookup_struct("Unknown"), content="None")
+}
+
+test "SymbolTable: size_of basic types" {
+  let st = SymbolTable::new()
+  inspect(st.size_of(@ast.CType::Int), content="Ok(4)")
+  inspect(st.size_of(@ast.CType::Char), content="Ok(1)")
+  inspect(st.size_of(@ast.CType::Ptr(@ast.CType::Int)), content="Ok(4)")
+  inspect(st.size_of(@ast.CType::Void), content="Err(\"cannot compute size of void\")")
+}
+
+test "SymbolTable: size_of struct" {
+  let st = SymbolTable::new()
+  let fields : Array[@ast.StructField] = [
+    { type_name: "int", name: "x" },
+    { type_name: "int", name: "y" },
+  ]
+  let _ = st.register_struct("Point", fields)
+  inspect(st.size_of(@ast.CType::Struct("Point")), content="Ok(8)")
+}
+
+test "SymbolTable: nested struct field" {
+  let st = SymbolTable::new()
+  // まず Point を登録
+  let _ = st.register_struct(
+    "Point",
+    [
+      { type_name: "int", name: "x" },
+      { type_name: "int", name: "y" },
+    ],
+  )
+  // Point を含む構造体
+  let result = st.register_struct(
+    "Rect",
+    [
+      { type_name: "struct Point", name: "origin" },
+      { type_name: "int", name: "width" },
+      { type_name: "int", name: "height" },
+    ],
+  )
+  inspect(
+    result,
+    content="Ok({name: \"Rect\", fields: [{name: \"origin\", field_type: Struct(\"Point\"), offset: 0}, {name: \"width\", field_type: Int, offset: 8}, {name: \"height\", field_type: Int, offset: 12}], total_size: 16})",
+  )
+}

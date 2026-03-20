@@ -345,17 +345,99 @@ fn Parser::parse_params(self : Parser) -> Result[Array[@ast.Param], String] {
   Ok(params)
 }
 
-/// プログラム全体のパース: トップレベル定義（関数定義）の列
+/// プログラム全体のパース: トップレベル定義（関数定義・構造体定義）の列
 pub fn Parser::parse_program(self : Parser) -> Result[@ast.Program, String] {
   let top_levels : Array[@ast.TopLevel] = []
   while not(self.at_eof()) {
-    let top_level = match self.parse_func_def() {
+    let top_level = if self.check(@lexer.Token::KwStruct) {
+      // struct の後に名前、その後に { なら構造体定義
+      // struct Name を型名として使う関数定義の可能性もある
+      let saved_pos = self.pos
+      self.advance() |> ignore // struct を消費
+      match self.peek() {
+        Ident(_) => {
+          self.advance() |> ignore // 名前を消費
+          if self.check(@lexer.Token::LBrace) {
+            // struct Name { ... }; → 構造体定義
+            self.pos = saved_pos
+            self.parse_struct_def()
+          } else {
+            // struct Name func(...) → 関数定義（戻り値型が struct Name）
+            self.pos = saved_pos
+            self.parse_func_def()
+          }
+        }
+        _ => {
+          self.pos = saved_pos
+          self.parse_func_def()
+        }
+      }
+    } else {
+      self.parse_func_def()
+    }
+    match top_level {
+      Ok(t) => top_levels.push(t)
+      Err(e) => return Err(e)
+    }
+  }
+  Ok(@ast.Program::{ top_levels, })
+}
+
+/// 構造体定義のパース: struct Name { type field; ... };
+fn Parser::parse_struct_def(self : Parser) -> Result[@ast.TopLevel, String] {
+  match self.expect(@lexer.Token::KwStruct) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  let struct_name = match self.peek() {
+    Ident(name) => {
+      self.advance() |> ignore
+      name
+    }
+    token => {
+      let pos = self.current_pos()
+      return Err(
+        "expected struct name, got \{token} at line \{pos.line}, col \{pos.col}",
+      )
+    }
+  }
+  match self.expect(@lexer.Token::LBrace) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  let fields : Array[@ast.StructField] = []
+  while not(self.check(@lexer.Token::RBrace)) && not(self.at_eof()) {
+    let field_type = match self.parse_type_name() {
       Ok(t) => t
       Err(e) => return Err(e)
     }
-    top_levels.push(top_level)
+    let field_name = match self.peek() {
+      Ident(name) => {
+        self.advance() |> ignore
+        name
+      }
+      token => {
+        let pos = self.current_pos()
+        return Err(
+          "expected field name, got \{token} at line \{pos.line}, col \{pos.col}",
+        )
+      }
+    }
+    match self.expect(@lexer.Token::Semi) {
+      Ok(_) => ()
+      Err(e) => return Err(e)
+    }
+    fields.push(@ast.StructField::{ type_name: field_type, name: field_name })
   }
-  Ok(@ast.Program::{ top_levels, })
+  match self.expect(@lexer.Token::RBrace) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  match self.expect(@lexer.Token::Semi) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  Ok(@ast.TopLevel::StructDef(struct_name, fields))
 }
 
 /// 関数定義のパース: type name(params) { body }

@@ -572,6 +572,7 @@ pub fn compile_program(
       }
       GlobalVarDecl(_, _, _) =>
         raise CodegenError("codegen: グローバル変数は未実装（Phase 4 で実装）")
+      StructDef(_, _) => () // 構造体定義はコード生成不要（型情報のみ）
     }
   }
   // 関数が1つもない場合はエラー
@@ -602,6 +603,7 @@ pub fn compile_program(
         func_bodies.push(fb)
       }
       GlobalVarDecl(_, _, _) => () // 上のパスで既にエラーにしているため到達しない
+      StructDef(_, _) => () // 構造体定義はコード生成不要
     }
   }
   // _start ラッパー関数の生成: main() を呼んで proc_exit に渡す

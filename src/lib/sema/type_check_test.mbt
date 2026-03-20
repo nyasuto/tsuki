@@ -354,3 +354,77 @@ test "TypeChecker: deref non-pointer is error" {
     content="Err(\"cannot dereference non-pointer type: Int\")",
   )
 }
+
+// === TypeChecker: 構造体のテスト ===
+
+test "TypeChecker: struct definition registration" {
+  // struct Point { int x; int y; };
+  // int main() { return 0; }
+  let program : @ast.Program = {
+    top_levels: [
+      StructDef(
+        "Point",
+        [{ type_name: "int", name: "x" }, { type_name: "int", name: "y" }],
+      ),
+      FuncDef(
+        "int",
+        "main",
+        [],
+        Block([Return(Some(IntLiteral(0)))]),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(tc.check_program(program), content="Ok(())")
+  // 構造体が登録されていることを確認
+  inspect(tc.symbols.lookup_struct("Point").is_empty(), content="false")
+}
+
+test "TypeChecker: struct variable declaration" {
+  // struct Point { int x; int y; };
+  // int main() { struct Point p; return 0; }
+  let program : @ast.Program = {
+    top_levels: [
+      StructDef(
+        "Point",
+        [{ type_name: "int", name: "x" }, { type_name: "int", name: "y" }],
+      ),
+      FuncDef(
+        "int",
+        "main",
+        [],
+        Block([VarDecl("struct Point", "p", None), Return(Some(IntLiteral(0)))]),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(tc.check_program(program), content="Ok(())")
+}
+
+test "TypeChecker: struct pointer parameter" {
+  // struct Point { int x; int y; };
+  // int get_x(struct Point* p) { return 0; }
+  // int main() { return 0; }
+  let program : @ast.Program = {
+    top_levels: [
+      StructDef(
+        "Point",
+        [{ type_name: "int", name: "x" }, { type_name: "int", name: "y" }],
+      ),
+      FuncDef(
+        "int",
+        "get_x",
+        [{ type_name: "struct Point*", name: "p" }],
+        Block([Return(Some(IntLiteral(0)))]),
+      ),
+      FuncDef(
+        "int",
+        "main",
+        [],
+        Block([Return(Some(IntLiteral(0)))]),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(tc.check_program(program), content="Ok(())")
+}

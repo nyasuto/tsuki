@@ -48,6 +48,18 @@ pub fn TypeChecker::check_program(
   self : TypeChecker,
   program : @ast.Program
 ) -> Result[Unit, String] {
+  // パス0: 構造体定義を先に登録（他の宣言で struct 型を使えるようにする）
+  for tl in program.top_levels {
+    match tl {
+      StructDef(name, fields) =>
+        match self.symbols.register_struct(name, fields) {
+          Ok(_) => ()
+          Err(e) => return Err(e)
+        }
+      FuncDef(_, _, _, _) => ()
+      GlobalVarDecl(_, _, _) => ()
+    }
+  }
   // パス1: 全てのトップレベル宣言をシンボルテーブルに登録
   for tl in program.top_levels {
     match tl {
@@ -79,6 +91,7 @@ pub fn TypeChecker::check_program(
           Err(e) => return Err(e)
         }
       }
+      StructDef(_, _) => () // パス0で処理済み
     }
   }
   // パス2: 各関数の本体を型チェック
@@ -134,6 +147,7 @@ pub fn TypeChecker::check_program(
           }
           None => ()
         }
+      StructDef(_, _) => () // パス0で処理済み
     }
   }
   Ok(())
