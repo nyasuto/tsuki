@@ -189,6 +189,19 @@ pub(all) struct TypedProgram {
   top_levels : Array[TypedTopLevel]
 } derive(Show, Eq)
 
+/// CType を C スタイルの文字列に変換する（エラーメッセージ用）
+/// 例: Int → "int", Ptr(Int) → "int*", Struct("Point") → "struct Point", Array(Int, 10) → "int[10]"
+pub fn format_type(ty : CType) -> String {
+  match ty {
+    Int => "int"
+    Char => "char"
+    Void => "void"
+    Ptr(inner) => format_type(inner) + "*"
+    Struct(name) => "struct " + name
+    Array(elem, size) => format_type(elem) + "[" + size.to_string() + "]"
+  }
+}
+
 /// 位置情報のフォーマット（{0,0} の場合は空文字列）
 pub fn format_pos(pos : @lexer.Pos) -> String {
   if pos.line == 0 && pos.col == 0 {

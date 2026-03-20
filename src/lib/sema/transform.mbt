@@ -100,9 +100,9 @@ pub fn TypeChecker::transform_program(
             if not(is_assignable(ty, typed_expr.ty)) {
               return Err(
                 "type mismatch in global variable initializer: expected " +
-                ty.to_string() +
+                @ast.format_type(ty) +
                 ", got " +
-                typed_expr.ty.to_string() +
+                @ast.format_type(typed_expr.ty) +
                 @ast.format_pos(expr.pos),
               )
             }
@@ -141,9 +141,9 @@ pub fn TypeChecker::transform_stmt(
           } else {
             Err(
               "return type mismatch: expected " +
-              expected.to_string() +
+              @ast.format_type(expected) +
               ", got " +
-              typed.ty.to_string() +
+              @ast.format_type(typed.ty) +
               @ast.format_pos(pos),
             )
           }
@@ -171,9 +171,9 @@ pub fn TypeChecker::transform_stmt(
               "type mismatch in variable '" +
               name +
               "': expected " +
-              ty.to_string() +
+              @ast.format_type(ty) +
               ", got " +
-              typed.ty.to_string() +
+              @ast.format_type(typed.ty) +
               @ast.format_pos(pos),
             )
           } else {
@@ -380,9 +380,9 @@ pub fn TypeChecker::transform_expr(
                     " of '" +
                     name +
                     "': expected " +
-                    param_types[i].to_string() +
+                    @ast.format_type(param_types[i]) +
                     ", got " +
-                    typed_arg.ty.to_string() +
+                    @ast.format_type(typed_arg.ty) +
                     @ast.format_pos(pos),
                   )
                 }
@@ -444,7 +444,7 @@ pub fn TypeChecker::transform_expr(
             }
             None => Err("undefined struct: '" + sname + "'" + @ast.format_pos(pos))
           }
-        other => Err("member access on non-struct type: " + other.to_string() + @ast.format_pos(pos))
+        other => Err("member access on non-struct type: " + @ast.format_type(other) + @ast.format_pos(pos))
       }
     }
     SizeOf(type_name) => {
@@ -471,9 +471,9 @@ pub fn TypeChecker::transform_expr(
       if not(is_assignable(typed_lhs.ty, typed_rhs.ty)) {
         Err(
           "cannot assign " +
-          typed_rhs.ty.to_string() +
+          @ast.format_type(typed_rhs.ty) +
           " to " +
-          typed_lhs.ty.to_string() +
+          @ast.format_type(typed_lhs.ty) +
           @ast.format_pos(pos),
         )
       } else {

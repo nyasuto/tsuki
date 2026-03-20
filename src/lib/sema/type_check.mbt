@@ -95,9 +95,9 @@ fn TypeChecker::check_binary_op(
           } else {
             Err(
               "invalid operands to '+': " +
-              lhs.to_string() +
+              @ast.format_type(lhs) +
               " and " +
-              rhs.to_string(),
+              @ast.format_type(rhs),
             )
           }
       }
@@ -111,9 +111,9 @@ fn TypeChecker::check_binary_op(
           } else {
             Err(
               "invalid operands to '-': " +
-              lhs.to_string() +
+              @ast.format_type(lhs) +
               " and " +
-              rhs.to_string(),
+              @ast.format_type(rhs),
             )
           }
       }
@@ -123,9 +123,9 @@ fn TypeChecker::check_binary_op(
       } else {
         Err(
           "invalid operands to arithmetic operator: " +
-          lhs.to_string() +
+          @ast.format_type(lhs) +
           " and " +
-          rhs.to_string(),
+          @ast.format_type(rhs),
         )
       }
     Eq | Ne | Lt | Gt | Le | Ge =>
@@ -134,9 +134,9 @@ fn TypeChecker::check_binary_op(
       } else {
         Err(
           "invalid comparison between " +
-          lhs.to_string() +
+          @ast.format_type(lhs) +
           " and " +
-          rhs.to_string(),
+          @ast.format_type(rhs),
         )
       }
     LogAnd | LogOr => Ok(@ast.CType::Int)
@@ -146,9 +146,9 @@ fn TypeChecker::check_binary_op(
       } else {
         Err(
           "invalid operands to bitwise operator: " +
-          lhs.to_string() +
+          @ast.format_type(lhs) +
           " and " +
-          rhs.to_string(),
+          @ast.format_type(rhs),
         )
       }
   }
@@ -166,21 +166,21 @@ fn TypeChecker::check_unary_op(
       if is_integer_type(operand) {
         Ok(@ast.CType::Int)
       } else {
-        Err("invalid operand to unary '-': " + operand.to_string())
+        Err("invalid operand to unary '-': " + @ast.format_type(operand))
       }
     LogNot => Ok(@ast.CType::Int)
     BitNot =>
       if is_integer_type(operand) {
         Ok(@ast.CType::Int)
       } else {
-        Err("invalid operand to '~': " + operand.to_string())
+        Err("invalid operand to '~': " + @ast.format_type(operand))
       }
     Deref =>
       match operand {
         Ptr(inner) => Ok(inner)
         _ =>
           Err(
-            "cannot dereference non-pointer type: " + operand.to_string(),
+            "cannot dereference non-pointer type: " + @ast.format_type(operand),
           )
       }
     AddrOf => Ok(@ast.CType::Ptr(operand))
@@ -193,7 +193,7 @@ fn TypeChecker::check_unary_op(
           _ =>
             Err(
               "invalid operand to increment/decrement: " +
-              operand.to_string(),
+              @ast.format_type(operand),
             )
         }
       }
@@ -206,7 +206,7 @@ fn TypeChecker::check_unary_op(
           _ =>
             Err(
               "invalid operand to increment/decrement: " +
-              operand.to_string(),
+              @ast.format_type(operand),
             )
         }
       }

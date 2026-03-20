@@ -48,3 +48,46 @@ test "Program with empty top-levels" {
   let prog : @ast.Program = { top_levels: [] }
   inspect(prog.top_levels.length(), content="0")
 }
+
+// === format_type テスト ===
+
+test "format_type: Int → int" {
+  inspect(@ast.format_type(@ast.CType::Int), content="int")
+}
+
+test "format_type: Char → char" {
+  inspect(@ast.format_type(@ast.CType::Char), content="char")
+}
+
+test "format_type: Void → void" {
+  inspect(@ast.format_type(@ast.CType::Void), content="void")
+}
+
+test "format_type: Ptr(Int) → int*" {
+  inspect(@ast.format_type(@ast.CType::Ptr(@ast.CType::Int)), content="int*")
+}
+
+test "format_type: Ptr(Ptr(Char)) → char**" {
+  inspect(
+    @ast.format_type(@ast.CType::Ptr(@ast.CType::Ptr(@ast.CType::Char))),
+    content="char**",
+  )
+}
+
+test "format_type: Struct(Point) → struct Point" {
+  inspect(@ast.format_type(@ast.CType::Struct("Point")), content="struct Point")
+}
+
+test "format_type: Ptr(Struct(Point)) → struct Point*" {
+  inspect(
+    @ast.format_type(@ast.CType::Ptr(@ast.CType::Struct("Point"))),
+    content="struct Point*",
+  )
+}
+
+test "format_type: Array(Int, 10) → int[10]" {
+  inspect(
+    @ast.format_type(@ast.CType::Array(@ast.CType::Int, 10)),
+    content="int[10]",
+  )
+}

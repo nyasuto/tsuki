@@ -426,7 +426,7 @@ test "TypeChecker: deref non-pointer is error" {
   let _ = tc.symbols.add_symbol("x", Variable(@ast.CType::Int))
   inspect(
     tc.infer_expr(e(UnaryOp(Deref, e(Ident("x"))))),
-    content="Err(\"cannot dereference non-pointer type: Int\")",
+    content="Err(\"cannot dereference non-pointer type: int\")",
   )
 }
 
