@@ -17,6 +17,30 @@ pub(all) enum Token {
   KwFor
   KwReturn
   KwSizeof
+  // 演算子
+  Plus       // +
+  Minus      // -
+  Star       // *
+  Slash      // /
+  Percent    // %
+  Eq         // ==
+  Ne         // !=
+  Lt         // <
+  Gt         // >
+  Le         // <=
+  Ge         // >=
+  And        // &&
+  Or         // ||
+  Amp        // &
+  Pipe       // |
+  Caret      // ^
+  Shl        // <<
+  Shr        // >>
+  Bang       // !
+  Tilde      // ~
+  Inc        // ++
+  Dec        // --
+  Assign     // =
   // ファイル終端
   Eof
 } derive(Show, Eq)

@@ -12,6 +12,32 @@ test "keyword tokens derive Show" {
   inspect(Token::Eof, content="Eof")
 }
 
+test "operator tokens derive Show" {
+  inspect(Token::Plus, content="Plus")
+  inspect(Token::Minus, content="Minus")
+  inspect(Token::Star, content="Star")
+  inspect(Token::Slash, content="Slash")
+  inspect(Token::Percent, content="Percent")
+  inspect(Token::Eq, content="Eq")
+  inspect(Token::Ne, content="Ne")
+  inspect(Token::Lt, content="Lt")
+  inspect(Token::Gt, content="Gt")
+  inspect(Token::Le, content="Le")
+  inspect(Token::Ge, content="Ge")
+  inspect(Token::And, content="And")
+  inspect(Token::Or, content="Or")
+  inspect(Token::Amp, content="Amp")
+  inspect(Token::Pipe, content="Pipe")
+  inspect(Token::Caret, content="Caret")
+  inspect(Token::Shl, content="Shl")
+  inspect(Token::Shr, content="Shr")
+  inspect(Token::Bang, content="Bang")
+  inspect(Token::Tilde, content="Tilde")
+  inspect(Token::Inc, content="Inc")
+  inspect(Token::Dec, content="Dec")
+  inspect(Token::Assign, content="Assign")
+}
+
 test "LocToken with position" {
   let tok = LocToken::{ token: KwReturn, pos: { line: 1, col: 5 } }
   inspect(tok, content="{token: KwReturn, pos: {line: 1, col: 5}}")
