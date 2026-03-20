@@ -28,6 +28,7 @@ let op_i32_xor : Byte = b'\x73'
 let op_i32_shl : Byte = b'\x74'
 let op_i32_shr_s : Byte = b'\x75'
 let op_call : Byte = b'\x10'
+let op_return : Byte = b'\x0F'
 
 /// コード生成コンテキスト: 変数名 → Wasm local index のマッピングを管理する
 pub struct CodegenContext {
@@ -209,5 +210,33 @@ pub fn emit_local_set(
   let bytes = @wasm.encode_uleb128(index)
   for b in bytes {
     code.push(b)
+  }
+}
+
+/// 文のコード生成: AST の Stmt を Wasm 命令列（バイト列）に変換する
+/// code 配列に命令バイトを追記する
+pub fn emit_stmt(
+  stmt : @ast.Stmt,
+  code : Array[Byte],
+  ctx : CodegenContext
+) -> Unit raise CodegenError {
+  match stmt {
+    Return(Some(expr)) => {
+      emit_expr(expr, code, ctx)
+      code.push(op_return)
+    }
+    Return(None) => code.push(op_return)
+    VarDecl(_, _, _) =>
+      raise CodegenError("codegen: VarDecl は未実装（変数宣言タスクで実装）")
+    ExprStmt(_) =>
+      raise CodegenError("codegen: ExprStmt は未実装")
+    Block(_) =>
+      raise CodegenError("codegen: Block は未実装")
+    If(_, _, _) =>
+      raise CodegenError("codegen: If は未実装（Phase 3 で実装）")
+    While(_, _) =>
+      raise CodegenError("codegen: While は未実装（Phase 3 で実装）")
+    For(_, _, _, _) =>
+      raise CodegenError("codegen: For は未実装（Phase 3 で実装）")
   }
 }

@@ -390,3 +390,65 @@ test "emit_local_set: index 128" {
   // local.set 128 → 0x21 0x80 0x01
   inspect(bytes_to_hex(code), content="21 80 01")
 }
+
+// === return 文テスト ===
+
+/// return 42; → i32.const 42; return
+test "emit_stmt: return int literal" {
+  let code : Array[Byte] = []
+  emit_stmt(@ast.Return(Some(@ast.IntLiteral(42))), code, empty_ctx())
+  // i32.const 42; return → 0x41 0x2A 0x0F
+  inspect(bytes_to_hex(code), content="41 2A 0F")
+}
+
+/// return; → return（void 関数の return）
+test "emit_stmt: return void" {
+  let code : Array[Byte] = []
+  emit_stmt(@ast.Return(None), code, empty_ctx())
+  // return → 0x0F
+  inspect(bytes_to_hex(code), content="0F")
+}
+
+/// return a + b; → local.get 0; local.get 1; i32.add; return
+test "emit_stmt: return with binary op" {
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
+  )
+  let code : Array[Byte] = []
+  emit_stmt(
+    @ast.Return(Some(@ast.BinaryOp(Add, @ast.Ident("a"), @ast.Ident("b")))),
+    code,
+    ctx,
+  )
+  // local.get 0; local.get 1; i32.add; return
+  inspect(bytes_to_hex(code), content="20 00 20 01 6A 0F")
+}
+
+/// return add(3, 4); → i32.const 3; i32.const 4; call 0; return
+test "emit_stmt: return with call" {
+  let functions : Map[String, Int] = { "add": 0 }
+  let ctx = CodegenContext::from_params([], functions~)
+  let code : Array[Byte] = []
+  emit_stmt(
+    @ast.Return(Some(@ast.Call("add", [@ast.IntLiteral(3), @ast.IntLiteral(4)]))),
+    code,
+    ctx,
+  )
+  // i32.const 3; i32.const 4; call 0; return
+  inspect(bytes_to_hex(code), content="41 03 41 04 10 00 0F")
+}
+
+/// return -x; → i32.const 0; local.get 0; i32.sub; return
+test "emit_stmt: return with unary neg" {
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "x" }],
+  )
+  let code : Array[Byte] = []
+  emit_stmt(
+    @ast.Return(Some(@ast.UnaryOp(Neg, @ast.Ident("x")))),
+    code,
+    ctx,
+  )
+  // i32.const 0; local.get 0; i32.sub; return
+  inspect(bytes_to_hex(code), content="41 00 20 00 6B 0F")
+}
