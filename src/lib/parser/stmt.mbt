@@ -245,44 +245,103 @@ fn Parser::parse_var_decl(self : Parser) -> Result[@ast.Stmt, String] {
       )
     }
   }
-  // 配列宣言のチェック: name[N]
+  // 配列宣言のチェック: name[N] または name[]
   let type_name = if self.check(@lexer.Token::LBracket) {
     self.advance() |> ignore
-    let size = match self.peek() {
-      IntLit(n) => {
-        self.advance() |> ignore
-        n
+    // サイズ省略（arr[]）かサイズ指定（arr[N]）かを判定
+    if self.check(@lexer.Token::RBracket) {
+      // arr[] — サイズは初期化リストから推論（後で埋める）
+      self.advance() |> ignore
+      type_name + "[]"
+    } else {
+      let size = match self.peek() {
+        IntLit(n) => {
+          self.advance() |> ignore
+          n
+        }
+        token => {
+          let pos = self.current_pos()
+          return Err(
+            "expected array size, got \{token} at line \{pos.line}, col \{pos.col}",
+          )
+        }
       }
-      token => {
-        let pos = self.current_pos()
-        return Err(
-          "expected array size, got \{token} at line \{pos.line}, col \{pos.col}",
-        )
+      match self.expect(@lexer.Token::RBracket) {
+        Ok(_) => ()
+        Err(e) => return Err(e)
       }
+      type_name + "[" + size.to_string() + "]"
     }
-    match self.expect(@lexer.Token::RBracket) {
-      Ok(_) => ()
-      Err(e) => return Err(e)
-    }
-    type_name + "[" + size.to_string() + "]"
   } else {
     type_name
   }
-  // 初期化式があるかチェック
+  // 初期化式があるかチェック（{...} 初期化リストまたは通常の式）
   let init_expr : @ast.Expr? = if self.check(@lexer.Token::Assign) {
     self.advance() |> ignore
-    match self.parse_expr() {
-      Ok(e) => Some(e)
-      Err(e) => return Err(e)
+    if self.check(@lexer.Token::LBrace) {
+      // 初期化リスト: = {expr, expr, ...}
+      match self.parse_init_list() {
+        Ok(e) => Some(e)
+        Err(e) => return Err(e)
+      }
+    } else {
+      match self.parse_expr() {
+        Ok(e) => Some(e)
+        Err(e) => return Err(e)
+      }
     }
   } else {
     None
+  }
+  // サイズ省略配列 (e.g. "int[]") の場合、初期化リストから要素数を推論
+  let type_name = if type_name.has_suffix("[]") {
+    match init_expr {
+      Some(InitList(elements)) => {
+        let base = type_name.substring(end=type_name.length() - 2)
+        base + "[" + elements.length().to_string() + "]"
+      }
+      _ => return Err("array declared with empty brackets must have an initializer list")
+    }
+  } else {
+    type_name
   }
   match self.expect(@lexer.Token::Semi) {
     Ok(_) => ()
     Err(e) => return Err(e)
   }
   Ok(@ast.Stmt::VarDecl(type_name, var_name, init_expr))
+}
+
+/// 初期化リストのパース: {expr, expr, ...}
+fn Parser::parse_init_list(self : Parser) -> Result[@ast.Expr, String] {
+  match self.expect(@lexer.Token::LBrace) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  let elements : Array[@ast.Expr] = []
+  // 空の初期化リスト {} を許容
+  if not(self.check(@lexer.Token::RBrace)) {
+    match self.parse_expr() {
+      Ok(e) => elements.push(e)
+      Err(e) => return Err(e)
+    }
+    while self.check(@lexer.Token::Comma) {
+      self.advance() |> ignore
+      // トレーリングカンマ対応: カンマの後に } が来たら終了
+      if self.check(@lexer.Token::RBrace) {
+        break
+      }
+      match self.parse_expr() {
+        Ok(e) => elements.push(e)
+        Err(e) => return Err(e)
+      }
+    }
+  }
+  match self.expect(@lexer.Token::RBrace) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  Ok(@ast.Expr::InitList(elements))
 }
 
 /// 式文のパース: expr;

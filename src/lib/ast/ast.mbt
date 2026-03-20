@@ -55,6 +55,7 @@ pub(all) enum Expr {
   Assign(Expr, Expr)                    // 代入: lhs, rhs
   MemberAccess(Expr, String)            // メンバアクセス: base.field
   SizeOf(String)                        // sizeof(型名): 型名文字列
+  InitList(Array[Expr])                 // 初期化リスト: {expr, expr, ...}
 } derive(Show, Eq)
 
 /// 文
@@ -114,6 +115,7 @@ pub(all) enum TypedExprKind {
   Assign(TypedExpr, TypedExpr)          // 代入: lhs, rhs
   MemberAccess(TypedExpr, String)       // メンバアクセス: base.field
   SizeOf(CType)                         // sizeof(型): 解決済み型
+  InitList(Array[TypedExpr])            // 初期化リスト: {expr, expr, ...}
 } derive(Show, Eq)
 
 /// 型付き文

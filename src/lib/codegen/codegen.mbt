@@ -332,6 +332,10 @@ fn collect_addr_taken_in_expr(
     }
     MemberAccess(base, _) => collect_addr_taken_in_expr(base, vars)
     SizeOf(_) => ()
+    InitList(elements) =>
+      for e in elements {
+        collect_addr_taken_in_expr(e, vars)
+      }
     IntLiteral(_) => ()
     CharLiteral(_) => ()
     StringLiteral(_) => ()
@@ -558,6 +562,7 @@ fn infer_expr_type(
     Call(_, _) => None
     Assign(_, _) => None
     SizeOf(_) => Some(@ast.CType::Int)
+    InitList(_) => None
     MemberAccess(base, field_name) =>
       match infer_struct_name(base, ctx) {
         Some(sname) =>
@@ -1099,6 +1104,10 @@ pub fn emit_expr(
         code.push(b)
       }
     }
+    InitList(_) =>
+      raise CodegenError(
+        "codegen: InitList should be handled in VarDecl, not as standalone expression",
+      )
   }
 }
 

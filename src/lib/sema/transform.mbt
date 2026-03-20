@@ -462,5 +462,26 @@ pub fn TypeChecker::transform_expr(
         )
       }
     }
+    InitList(elements) => {
+      let typed_elements : Array[@ast.TypedExpr] = []
+      for e in elements {
+        match self.transform_expr(e) {
+          Ok(t) => typed_elements.push(t)
+          Err(e) => return Err(e)
+        }
+      }
+      // 初期化リストの型は最初の要素の型の配列とする
+      let elem_ty = if typed_elements.length() > 0 {
+        typed_elements[0].ty
+      } else {
+        @ast.CType::Int
+      }
+      Ok(
+        {
+          kind: @ast.TypedExprKind::InitList(typed_elements),
+          ty: @ast.CType::Array(elem_ty, typed_elements.length()),
+        },
+      )
+    }
   }
 }

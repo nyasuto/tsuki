@@ -472,3 +472,37 @@ test "parse pointer array declaration" {
   let result = parse_stmt_from("int* ptrs[5];")
   inspect!(result, content="Ok(VarDecl(\"int*[5]\", \"ptrs\", None))")
 }
+
+// === 配列初期化リスト ===
+
+test "parse array init list" {
+  let result = parse_stmt_from("int arr[] = {1, 2, 3};")
+  inspect!(
+    result,
+    content="Ok(VarDecl(\"int[3]\", \"arr\", Some(InitList([IntLiteral(1), IntLiteral(2), IntLiteral(3)]))))",
+  )
+}
+
+test "parse array init list with explicit size" {
+  let result = parse_stmt_from("int arr[5] = {10, 20, 30};")
+  inspect!(
+    result,
+    content="Ok(VarDecl(\"int[5]\", \"arr\", Some(InitList([IntLiteral(10), IntLiteral(20), IntLiteral(30)]))))",
+  )
+}
+
+test "parse array init list single element" {
+  let result = parse_stmt_from("int arr[] = {42};")
+  inspect!(
+    result,
+    content="Ok(VarDecl(\"int[1]\", \"arr\", Some(InitList([IntLiteral(42)]))))",
+  )
+}
+
+test "parse array empty brackets without init is error" {
+  let result = parse_stmt_from("int arr[];")
+  inspect!(
+    result,
+    content="Err(\"array declared with empty brackets must have an initializer list\")",
+  )
+}
