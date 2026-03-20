@@ -167,6 +167,50 @@ test "emit_expr: bitand" {
   inspect(bytes_to_hex(code), content="41 FF 01 41 0F 71")
 }
 
+/// ビット演算: 0xFF | 0x0F → i32.const 255; i32.const 15; i32.or
+test "emit_expr: bitor" {
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.BinaryOp(BitOr, @ast.IntLiteral(255), @ast.IntLiteral(15)),
+    code,
+    empty_ctx(),
+  )
+  inspect(bytes_to_hex(code), content="41 FF 01 41 0F 72")
+}
+
+/// ビット演算: 0xFF ^ 0x0F → i32.const 255; i32.const 15; i32.xor
+test "emit_expr: bitxor" {
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.BinaryOp(BitXor, @ast.IntLiteral(255), @ast.IntLiteral(15)),
+    code,
+    empty_ctx(),
+  )
+  inspect(bytes_to_hex(code), content="41 FF 01 41 0F 73")
+}
+
+/// ビット演算: 1 << 3 → i32.const 1; i32.const 3; i32.shl
+test "emit_expr: shl" {
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.BinaryOp(Shl, @ast.IntLiteral(1), @ast.IntLiteral(3)),
+    code,
+    empty_ctx(),
+  )
+  inspect(bytes_to_hex(code), content="41 01 41 03 74")
+}
+
+/// ビット演算: 16 >> 2 → i32.const 16; i32.const 2; i32.shr_s
+test "emit_expr: shr" {
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.BinaryOp(Shr, @ast.IntLiteral(16), @ast.IntLiteral(2)),
+    code,
+    empty_ctx(),
+  )
+  inspect(bytes_to_hex(code), content="41 10 41 02 75")
+}
+
 /// 単項演算: -42 → i32.const 0; i32.const 42; i32.sub
 test "emit_expr: unary neg" {
   let code : Array[Byte] = []
