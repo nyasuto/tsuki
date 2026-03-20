@@ -15,6 +15,9 @@
 
 set -euo pipefail
 
+# --- PATH 補完（非ログインシェルでも moon/wasmtime を見つける） ---
+export PATH="$HOME/.moon/bin:$HOME/.wasmtime/bin:$PATH"
+
 # --- 設定 ---
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROMPT_FILE="${PROJECT_DIR}/prompt.md"
@@ -123,35 +126,13 @@ run_iteration() {
     start_time=$(date +%s)
 
     # Claude Code 実行
-    # --print: 出力のみ（インタラクティブモードなし）
-    # --output-format stream-json: リアルタイムストリーミング
+    # --print --verbose: ストリーミング出力（ツール呼び出し含む）
     # --dangerously-skip-permissions: 自律実行を許可
     claude --print \
+           --verbose \
            --dangerously-skip-permissions \
-           --output-format stream-json \
            "$(cat "$PROMPT_FILE")" \
-           2>&1 | while IFS= read -r line; do
-        # stream-json から result テキストを抽出して表示
-        if echo "$line" | python3 -c "
-import sys, json
-try:
-    obj = json.load(sys.stdin)
-    if obj.get('type') == 'assistant' and 'content' in obj:
-        for block in obj['content']:
-            if block.get('type') == 'text':
-                print(block['text'])
-            elif block.get('type') == 'tool_use':
-                print(f\"  [tool] {block.get('name', '?')}\")
-    elif obj.get('type') == 'result':
-        for block in obj.get('content', []):
-            if block.get('type') == 'text':
-                print(block['text'])
-except: pass
-" 2>/dev/null; then
-            :
-        fi
-        echo "$line" >> "$LOG_FILE"
-    done
+           2>&1 | tee -a "$LOG_FILE"
 
     local exit_code=${PIPESTATUS[0]}
     local end_time
@@ -174,8 +155,8 @@ except: pass
     fi
     echo -e "${BLUE}----------------${NC}"
 
-    # 完了チェック：tasks.md に ALL_DONE マーカーがあれば終了
-    if grep -q "ALL_PHASES_COMPLETE\|🏁 ALL DONE" "$TASKS_FILE" 2>/dev/null; then
+    # 完了チェック：tasks.md に ALL_DONE マーカーがあれば終了（コメント行は除外）
+    if grep -v '<!--' "$TASKS_FILE" 2>/dev/null | grep -q "ALL_PHASES_COMPLETE\|🏁 ALL DONE"; then
         echo -e "${GREEN}🎉 全フェーズ完了！ Ralph Loop を終了します。${NC}"
         return 1  # ループ終了シグナル
     fi
