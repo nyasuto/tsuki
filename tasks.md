@@ -93,7 +93,7 @@
 
 ---
 
-## Phase 3: 制御フロー + 比較演算 — ⏳ WAITING
+## Phase 3: 制御フロー + 比較演算 — ✅ DONE
 
 ### Parser 拡張
 - [x] if / else 文のパース
@@ -112,18 +112,18 @@
 - [x] 前置 ++/-- および後置 ++/-- の Codegen
 
 ### Phase 3 統合テスト
-- [ ] if/else: `int abs(int x) { if (x < 0) return -x; else return x; }` → abs(-5) == 5
-- [ ] while ループ: 階乗計算 `fact(5)` → 120
-- [ ] for ループ: フィボナッチ `fib(10)` → 55
-- [ ] ネストした制御フロー: ユークリッド互除法 `gcd(12, 8)` → 4
+- [x] if/else: `int abs(int x) { if (x < 0) return -x; else return x; }` → abs(-5) == 5
+- [x] while ループ: 階乗計算 `fact(5)` → 120
+- [x] for ループ: フィボナッチ `fib(10)` → 55
+- [x] ネストした制御フロー: ユークリッド互除法 `gcd(12, 8)` → 4
 
 ### Phase 3 完了条件
-- [ ] `moon check` エラーなし
-- [ ] `moon test` 全テスト通過
-- [ ] 統合テスト全て通過
+- [x] `moon check` エラーなし
+- [x] `moon test` 全テスト通過
+- [x] 統合テスト全て通過
 
-**完了日時**:  
-**特記事項**:  
+**完了日時**: 2026-03-20
+**特記事項**: 全314テスト通過。統合テスト4件（if/else abs, while 階乗, for フィボナッチ, ネスト制御フロー GCD）全て wasmtime で検証済み。
 
 ---
 
