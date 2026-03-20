@@ -846,6 +846,91 @@ test "compile_program: function with while loop (factorial)" {
   inspect(wasm.length() > 20, content="true")
 }
 
+// === 短絡評価テスト ===
+
+/// && 短絡評価: 1 && 2 → if(1, 2, 0)
+/// i32.const 1; if i32; i32.const 2; else; i32.const 0; end
+test "emit_expr: logical and short-circuit" {
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.BinaryOp(LogAnd, @ast.IntLiteral(1), @ast.IntLiteral(2)),
+    code,
+    empty_ctx(),
+  )
+  // i32.const 1 (41 01); if i32 (04 7F); i32.const 2 (41 02); else (05); i32.const 0 (41 00); end (0B)
+  inspect(bytes_to_hex(code), content="41 01 04 7F 41 02 05 41 00 0B")
+}
+
+/// || 短絡評価: 0 || 3 → if(0, 1, 3)
+/// i32.const 0; if i32; i32.const 1; else; i32.const 3; end
+test "emit_expr: logical or short-circuit" {
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.BinaryOp(LogOr, @ast.IntLiteral(0), @ast.IntLiteral(3)),
+    code,
+    empty_ctx(),
+  )
+  // i32.const 0 (41 00); if i32 (04 7F); i32.const 1 (41 01); else (05); i32.const 3 (41 03); end (0B)
+  inspect(bytes_to_hex(code), content="41 00 04 7F 41 01 05 41 03 0B")
+}
+
+/// && 短絡評価（変数参照付き）: a && b
+test "emit_expr: logical and with idents" {
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
+  )
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.BinaryOp(LogAnd, @ast.Ident("a"), @ast.Ident("b")),
+    code,
+    ctx,
+  )
+  // local.get 0 (20 00); if i32 (04 7F); local.get 1 (20 01); else (05); i32.const 0 (41 00); end (0B)
+  inspect(bytes_to_hex(code), content="20 00 04 7F 20 01 05 41 00 0B")
+}
+
+/// || 短絡評価（変数参照付き）: a || b
+test "emit_expr: logical or with idents" {
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
+  )
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.BinaryOp(LogOr, @ast.Ident("a"), @ast.Ident("b")),
+    code,
+    ctx,
+  )
+  // local.get 0 (20 00); if i32 (04 7F); i32.const 1 (41 01); else (05); local.get 1 (20 01); end (0B)
+  inspect(bytes_to_hex(code), content="20 00 04 7F 41 01 05 20 01 0B")
+}
+
+/// ネストした短絡評価: (a && b) || c
+test "emit_expr: nested logical and-or" {
+  let ctx = CodegenContext::from_params(
+    [
+      { type_name: "int", name: "a" },
+      { type_name: "int", name: "b" },
+      { type_name: "int", name: "c" },
+    ],
+  )
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.BinaryOp(
+      LogOr,
+      @ast.BinaryOp(LogAnd, @ast.Ident("a"), @ast.Ident("b")),
+      @ast.Ident("c"),
+    ),
+    code,
+    ctx,
+  )
+  // (a && b): local.get 0; if i32; local.get 1; else; i32.const 0; end
+  // || c: if i32; i32.const 1; else; local.get 2; end
+  inspect(
+    bytes_to_hex(code),
+    content="20 00 04 7F 20 01 05 41 00 0B 04 7F 41 01 05 20 02 0B",
+  )
+}
+
 /// ローカル変数を持つ関数のコンパイル
 test "compile_program: function with locals" {
   let program : @ast.Program = {

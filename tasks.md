@@ -107,7 +107,7 @@
 - [x] if/else → Wasm `if ... else ... end` ブロック
 - [x] while → Wasm `block` + `loop` + `br_if` + `br`
 - [x] for → while への AST レベル変換（desugar）
-- [ ] 短絡評価: && → if(lhs, rhs, 0), || → if(lhs, 1, rhs) パターン
+- [x] 短絡評価: && → if(lhs, rhs, 0), || → if(lhs, 1, rhs) パターン
 - [ ] ビット演算: `i32.and`, `i32.or`, `i32.xor`, `i32.shl`, `i32.shr_s`
 - [ ] 前置 ++/-- および後置 ++/-- の Codegen
 

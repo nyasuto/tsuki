@@ -44,6 +44,9 @@ let op_br_if : Byte = b'\x0D'
 /// ブロックタイプ: void（値を返さない）
 let blocktype_void : Byte = b'\x40'
 
+/// ブロックタイプ: i32（i32 値を返す）
+let blocktype_i32 : Byte = b'\x7F'
+
 /// unreachable 命令: 到達不能コードをバリデータに通知する
 let op_unreachable : Byte = b'\x00'
 
@@ -119,8 +122,9 @@ fn binop_to_opcode(op : @ast.BinOp) -> Byte {
     BitXor => op_i32_xor
     Shl => op_i32_shl
     Shr => op_i32_shr_s
-    LogAnd => op_i32_and // 暫定: 短絡評価は Phase 3 で実装
-    LogOr => op_i32_or   // 暫定: 短絡評価は Phase 3 で実装
+    // LogAnd, LogOr は emit_expr で短絡評価として特別に処理する
+    LogAnd => abort("unreachable: LogAnd は emit_expr で処理")
+    LogOr => abort("unreachable: LogOr は emit_expr で処理")
   }
 }
 
@@ -146,6 +150,30 @@ pub fn emit_expr(
       for b in bytes {
         code.push(b)
       }
+    }
+    BinaryOp(LogAnd, lhs, rhs) => {
+      // 短絡評価: && → if(lhs, rhs, 0)
+      // lhs が真なら rhs を評価、偽なら 0
+      emit_expr(lhs, code, ctx)
+      code.push(op_if)
+      code.push(blocktype_i32)
+      emit_expr(rhs, code, ctx)
+      code.push(op_else)
+      code.push(op_i32_const)
+      code.push(b'\x00') // 0
+      code.push(op_end)
+    }
+    BinaryOp(LogOr, lhs, rhs) => {
+      // 短絡評価: || → if(lhs, 1, rhs)
+      // lhs が真なら 1、偽なら rhs を評価
+      emit_expr(lhs, code, ctx)
+      code.push(op_if)
+      code.push(blocktype_i32)
+      code.push(op_i32_const)
+      code.push(b'\x01') // 1
+      code.push(op_else)
+      emit_expr(rhs, code, ctx)
+      code.push(op_end)
     }
     BinaryOp(op, lhs, rhs) => {
       emit_expr(lhs, code, ctx)
