@@ -38,6 +38,22 @@ test "operator tokens derive Show" {
   inspect(Token::Assign, content="Assign")
 }
 
+test "literal and identifier tokens derive Show" {
+  inspect(Token::IntLit(42), content="IntLit(42)")
+  inspect(Token::IntLit(0), content="IntLit(0)")
+  inspect(Token::CharLit('a'), content="CharLit('a')")
+  inspect(Token::CharLit('\n'), content="CharLit('\\n')")
+  inspect(Token::StringLit("hello"), content="StringLit(\"hello\")")
+  inspect(Token::StringLit(""), content="StringLit(\"\")")
+  inspect(Token::Ident("main"), content="Ident(\"main\")")
+  inspect(Token::Ident("x"), content="Ident(\"x\")")
+}
+
+test "LocToken with literal token" {
+  let tok = LocToken::{ token: IntLit(42), pos: { line: 3, col: 10 } }
+  inspect(tok, content="{token: IntLit(42), pos: {line: 3, col: 10}}")
+}
+
 test "LocToken with position" {
   let tok = LocToken::{ token: KwReturn, pos: { line: 1, col: 5 } }
   inspect(tok, content="{token: KwReturn, pos: {line: 1, col: 5}}")

@@ -52,6 +52,12 @@ pub(all) enum Token {
   Comma      // ,
   Dot        // .
   Arrow      // ->
+  // リテラル
+  IntLit(Int)        // 整数リテラル
+  CharLit(Char)      // 文字リテラル
+  StringLit(String)  // 文字列リテラル
+  // 識別子
+  Ident(String)      // 識別子
   // ファイル終端
   Eof
 } derive(Show, Eq)
