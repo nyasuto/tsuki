@@ -527,8 +527,27 @@ pub fn emit_expr(
               )
           }
       }
+    Assign(UnaryOp(Deref, addr_expr), value) => {
+      // *p = value: アドレスを評価し、値を評価し、i32.store で書き込む
+      // C の代入は値を返すので、temp local で値を保持する
+      emit_expr(addr_expr, code, ctx) // [addr]
+      emit_expr(value, code, ctx) // [addr, value]
+      let temp = ctx.get_temp_local()
+      code.push(op_local_tee) // [addr, value] (value saved to temp)
+      let temp_bytes = @wasm.encode_uleb128(temp)
+      for b in temp_bytes {
+        code.push(b)
+      }
+      emit_i32_store(code) // []
+      // 値を式の結果として残す
+      code.push(op_local_get)
+      let temp_bytes2 = @wasm.encode_uleb128(temp)
+      for b in temp_bytes2 {
+        code.push(b)
+      }
+    }
     Assign(_, _) =>
-      raise CodegenError("codegen: 左辺値が変数ではありません（ポインタ代入は Phase 4 で実装）")
+      raise CodegenError("codegen: 左辺値が変数ではありません")
     StringLiteral(_) =>
       raise CodegenError("codegen: StringLiteral は未実装（Phase 5 で実装）")
     UnaryOp(PreInc, Ident(name)) =>
@@ -705,8 +724,13 @@ pub fn emit_expr(
       raise CodegenError("codegen: ++のオペランドは変数でなければなりません")
     UnaryOp(PostDec, _) =>
       raise CodegenError("codegen: --のオペランドは変数でなければなりません")
-    UnaryOp(Deref, _) =>
-      raise CodegenError("codegen: Deref は未実装（Phase 4 で実装）")
+    UnaryOp(Deref, operand) => {
+      // *p（間接参照）: operand を評価してアドレスを得て、i32.load で値を読む
+      emit_expr(operand, code, ctx) // [addr]
+      code.push(op_i32_load)
+      code.push(b'\x02') // alignment: 2^2 = 4 bytes
+      code.push(b'\x00') // memory offset: 0
+    }
     UnaryOp(AddrOf, Ident(name)) =>
       match ctx.stack_vars.get(name) {
         Some(offset) => emit_stack_addr(offset, code)
