@@ -680,6 +680,89 @@ test "compile_program: no functions error" {
   inspect(result is Err(_), content="true")
 }
 
+// === if/else 文テスト ===
+
+/// if (x < 0) return -x; → 条件 + if void + then + end
+test "emit_stmt: if without else" {
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "x" }],
+  )
+  let code : Array[Byte] = []
+  emit_stmt(
+    @ast.If(
+      @ast.BinaryOp(Lt, @ast.Ident("x"), @ast.IntLiteral(0)),
+      @ast.Return(Some(@ast.UnaryOp(Neg, @ast.Ident("x")))),
+      None,
+    ),
+    code,
+    ctx,
+  )
+  // local.get 0; i32.const 0; i32.lt_s; if void; i32.const 0; local.get 0; i32.sub; return; end
+  inspect(
+    bytes_to_hex(code),
+    content="20 00 41 00 48 04 40 41 00 20 00 6B 0F 0B",
+  )
+}
+
+/// if (x) return 1; else return 0; → 条件 + if void + then + else + end
+test "emit_stmt: if with else" {
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "x" }],
+  )
+  let code : Array[Byte] = []
+  emit_stmt(
+    @ast.If(
+      @ast.Ident("x"),
+      @ast.Return(Some(@ast.IntLiteral(1))),
+      Some(@ast.Return(Some(@ast.IntLiteral(0)))),
+    ),
+    code,
+    ctx,
+  )
+  // local.get 0; if void; i32.const 1; return; else; i32.const 0; return; end
+  inspect(
+    bytes_to_hex(code),
+    content="20 00 04 40 41 01 0F 05 41 00 0F 0B",
+  )
+}
+
+/// if/else を含む関数の compile_program テスト
+test "compile_program: function with if/else" {
+  let program : @ast.Program = {
+    top_levels: [
+      @ast.FuncDef(
+        "int",
+        "abs_val",
+        [{ type_name: "int", name: "x" }],
+        @ast.Block(
+          [
+            @ast.If(
+              @ast.BinaryOp(Lt, @ast.Ident("x"), @ast.IntLiteral(0)),
+              @ast.Return(Some(@ast.UnaryOp(Neg, @ast.Ident("x")))),
+              Some(@ast.Return(Some(@ast.Ident("x")))),
+            ),
+          ],
+        ),
+      ),
+      @ast.FuncDef(
+        "int",
+        "main",
+        [],
+        @ast.Block(
+          [
+            @ast.Return(
+              Some(@ast.Call("abs_val", [@ast.IntLiteral(-5)])),
+            ),
+          ],
+        ),
+      ),
+    ],
+  }
+  let wasm = compile_program(program)
+  inspect(bytes_to_hex(Array::from_iter(wasm[0:8].iter())), content="00 61 73 6D 01 00 00 00")
+  inspect(wasm.length() > 20, content="true")
+}
+
 /// ローカル変数を持つ関数のコンパイル
 test "compile_program: function with locals" {
   let program : @ast.Program = {

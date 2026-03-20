@@ -104,7 +104,7 @@
 
 ### Codegen 拡張
 - [x] 比較演算: `i32.eq`, `i32.ne`, `i32.lt_s`, `i32.gt_s`, `i32.le_s`, `i32.ge_s`
-- [ ] if/else → Wasm `if ... else ... end` ブロック
+- [x] if/else → Wasm `if ... else ... end` ブロック
 - [ ] while → Wasm `block` + `loop` + `br_if` + `br`
 - [ ] for → while への AST レベル変換（desugar）
 - [ ] 短絡評価: && → if(lhs, rhs, 0), || → if(lhs, 1, rhs) パターン

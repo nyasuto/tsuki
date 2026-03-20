@@ -32,6 +32,17 @@ let op_call : Byte = b'\x10'
 let op_return : Byte = b'\x0F'
 let op_local_tee : Byte = b'\x22'
 
+/// 制御フロー命令のオペコード
+let op_if : Byte = b'\x04'
+let op_else : Byte = b'\x05'
+let op_end : Byte = b'\x0B'
+
+/// ブロックタイプ: void（値を返さない）
+let blocktype_void : Byte = b'\x40'
+
+/// unreachable 命令: 到達不能コードをバリデータに通知する
+let op_unreachable : Byte = b'\x00'
+
 /// コード生成コンテキスト: 変数名 → Wasm local index のマッピングを管理する
 pub struct CodegenContext {
   /// 変数名 → local index のマッピング
@@ -263,8 +274,25 @@ pub fn emit_stmt(
       for stmt in stmts {
         emit_stmt(stmt, code, ctx)
       }
-    If(_, _, _) =>
-      raise CodegenError("codegen: If は未実装（Phase 3 で実装）")
+    If(cond, then_body, else_body) => {
+      // 条件式をスタックに積む
+      emit_expr(cond, code, ctx)
+      // Wasm if ブロック（void 型: 値を返さない）
+      code.push(op_if)
+      code.push(blocktype_void)
+      // then 節
+      emit_stmt(then_body, code, ctx)
+      // else 節（ある場合）
+      match else_body {
+        Some(else_stmt) => {
+          code.push(op_else)
+          emit_stmt(else_stmt, code, ctx)
+        }
+        None => ()
+      }
+      // end
+      code.push(op_end)
+    }
     While(_, _) =>
       raise CodegenError("codegen: While は未実装（Phase 3 で実装）")
     For(_, _, _, _) =>
@@ -310,6 +338,9 @@ fn compile_function(
   let ctx = CodegenContext::from_params(params, functions~)
   let code : Array[Byte] = []
   emit_stmt(body, code, ctx)
+  // 関数末尾に unreachable を追加
+  // 全パスが return で抜ける場合、関数 end 到達時のスタック型チェックを通すため
+  code.push(op_unreachable)
   // パラメータ以外に追加されたローカル変数の数を計算
   let extra_locals = ctx.next_index - params.length()
   let locals : Array[@wasm.LocalDecl] = if extra_locals > 0 {
