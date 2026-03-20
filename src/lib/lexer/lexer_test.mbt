@@ -556,3 +556,12 @@ test "tokenize with whitespace: int main" {
     content="Ok([{token: KwInt, pos: {line: 1, col: 1}}, {token: Ident(\"main\"), pos: {line: 1, col: 5}}, {token: Eof, pos: {line: 1, col: 9}}])",
   )
 }
+
+test "snapshot: int main() { return 42; }" {
+  let lexer = @lexer.Lexer::new("int main() { return 42; }")
+  let result = lexer.tokenize()
+  inspect(
+    result,
+    content="Ok([{token: KwInt, pos: {line: 1, col: 1}}, {token: Ident(\"main\"), pos: {line: 1, col: 5}}, {token: LParen, pos: {line: 1, col: 9}}, {token: RParen, pos: {line: 1, col: 10}}, {token: LBrace, pos: {line: 1, col: 12}}, {token: KwReturn, pos: {line: 1, col: 14}}, {token: IntLit(42), pos: {line: 1, col: 21}}, {token: Semi, pos: {line: 1, col: 23}}, {token: RBrace, pos: {line: 1, col: 25}}, {token: Eof, pos: {line: 1, col: 26}}])",
+  )
+}
