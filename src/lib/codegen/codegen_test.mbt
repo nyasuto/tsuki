@@ -1384,3 +1384,140 @@ test "emit_expr: non-pointer add unchanged" {
   )
   inspect(bytes_to_hex(code), content="41 03 41 04 6A")
 }
+
+/// 構造体変数のスタック配置: struct Point { int x; int y; } で 8 バイト確保
+test "struct variable stack allocation: Point (8 bytes)" {
+  let struct_defs : Map[String, @sema.StructInfo] = {}
+  struct_defs["Point"] = {
+    name: "Point",
+    fields: [
+      { name: "x", field_type: @ast.CType::Int, offset: 0 },
+      { name: "y", field_type: @ast.CType::Int, offset: 4 },
+    ],
+    total_size: 8,
+  }
+  let ctx = CodegenContext::new(struct_defs~)
+  // struct Point p; → スタック上に 8 バイト確保
+  let code : Array[Byte] = []
+  emit_stmt(
+    @ast.VarDecl("struct Point", "p", None),
+    code,
+    ctx,
+  )
+  // frame_size が 8 であることを確認（構造体サイズ分のスタック領域）
+  inspect(ctx.frame_size, content="8")
+  // p がスタック変数として登録されていることを確認
+  inspect(ctx.is_stack_var("p"), content="true")
+  // p のスタックオフセットが 0 であることを確認
+  inspect(ctx.stack_vars.get("p"), content="Some(0)")
+}
+
+/// 構造体変数のスタック配置: struct Rect { int x; int y; int w; int h; } で 16 バイト確保
+test "struct variable stack allocation: Rect (16 bytes)" {
+  let struct_defs : Map[String, @sema.StructInfo] = {}
+  struct_defs["Rect"] = {
+    name: "Rect",
+    fields: [
+      { name: "x", field_type: @ast.CType::Int, offset: 0 },
+      { name: "y", field_type: @ast.CType::Int, offset: 4 },
+      { name: "w", field_type: @ast.CType::Int, offset: 8 },
+      { name: "h", field_type: @ast.CType::Int, offset: 12 },
+    ],
+    total_size: 16,
+  }
+  let ctx = CodegenContext::new(struct_defs~)
+  let code : Array[Byte] = []
+  emit_stmt(
+    @ast.VarDecl("struct Rect", "r", None),
+    code,
+    ctx,
+  )
+  inspect(ctx.frame_size, content="16")
+  inspect(ctx.is_stack_var("r"), content="true")
+}
+
+/// 構造体変数の Ident はアドレスを返す（i32.load ではなく addr を push）
+test "struct variable ident returns address" {
+  let struct_defs : Map[String, @sema.StructInfo] = {}
+  struct_defs["Point"] = {
+    name: "Point",
+    fields: [
+      { name: "x", field_type: @ast.CType::Int, offset: 0 },
+      { name: "y", field_type: @ast.CType::Int, offset: 4 },
+    ],
+    total_size: 8,
+  }
+  let ctx = CodegenContext::new(struct_defs~)
+  // まず変数を宣言してスタック配置
+  let decl_code : Array[Byte] = []
+  emit_stmt(
+    @ast.VarDecl("struct Point", "p", None),
+    decl_code,
+    ctx,
+  )
+  // p の参照: アドレスを返す（global.get $sp + i32.const 0 + i32.add）
+  let code : Array[Byte] = []
+  emit_expr(@ast.Ident("p"), code, ctx)
+  // global.get 0 (23 00), i32.const 0 (41 00), i32.add (6A)
+  inspect(bytes_to_hex(code), content="23 00 41 00 6A")
+}
+
+/// 構造体と通常変数の混在: 構造体はスタック、通常変数は Wasm local
+test "struct and scalar variable mixed allocation" {
+  let struct_defs : Map[String, @sema.StructInfo] = {}
+  struct_defs["Point"] = {
+    name: "Point",
+    fields: [
+      { name: "x", field_type: @ast.CType::Int, offset: 0 },
+      { name: "y", field_type: @ast.CType::Int, offset: 4 },
+    ],
+    total_size: 8,
+  }
+  let ctx = CodegenContext::new(struct_defs~)
+  let code : Array[Byte] = []
+  // int n = 10; → Wasm local
+  emit_stmt(
+    @ast.VarDecl("int", "n", Some(@ast.IntLiteral(10))),
+    code,
+    ctx,
+  )
+  // struct Point p; → スタック配置
+  emit_stmt(
+    @ast.VarDecl("struct Point", "p", None),
+    code,
+    ctx,
+  )
+  // n は Wasm local（スタック変数ではない）
+  inspect(ctx.is_stack_var("n"), content="false")
+  inspect(ctx.resolve("n"), content="Some(0)")
+  // p はスタック変数
+  inspect(ctx.is_stack_var("p"), content="true")
+  inspect(ctx.frame_size, content="8")
+}
+
+/// 構造体ポインタの演算でスケーリングが正しいことを確認
+/// struct Point* p に対して p + 1 → p + 8（sizeof(Point) = 8）
+test "pointer arithmetic with struct pointer scales by struct size" {
+  let struct_defs : Map[String, @sema.StructInfo] = {}
+  struct_defs["Point"] = {
+    name: "Point",
+    fields: [
+      { name: "x", field_type: @ast.CType::Int, offset: 0 },
+      { name: "y", field_type: @ast.CType::Int, offset: 4 },
+    ],
+    total_size: 8,
+  }
+  let ctx = CodegenContext::new(struct_defs~)
+  // struct Point* 型の変数 p を登録
+  let _idx = ctx.add_local("p")
+  ctx.var_types["p"] = @ast.CType::Ptr(@ast.CType::Struct("Point"))
+  // p + 1 → p + 1*8
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.BinaryOp(Add, @ast.Ident("p"), @ast.IntLiteral(1)),
+    code,
+    ctx,
+  )
+  // local.get 0 (20 00), i32.const 1 (41 01), i32.const 8 (41 08), i32.mul (6C), i32.add (6A)
+  inspect(bytes_to_hex(code), content="20 00 41 01 41 08 6C 6A")
+}

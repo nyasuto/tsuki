@@ -76,7 +76,7 @@ pub struct CodegenContext {
   /// アドレスを取る変数（&x）がスタック上に配置されるとき、このサイズが増加する
   pub mut frame_size : Int
   /// スタック配置変数: 変数名 → SP からのオフセット
-  /// アドレスを取る変数（&x）のみスタック上に配置される
+  /// アドレスを取る変数（&x）や構造体変数がスタック上に配置される
   stack_vars : Map[String, Int]
   /// アドレスが取られる変数名のセット（事前スキャンで構築）
   addr_taken : Map[String, Bool]
@@ -84,10 +84,14 @@ pub struct CodegenContext {
   mut temp_local : Int?
   /// 変数名 → 解決済み型のマッピング（ポインタ演算のスケーリングに使用）
   var_types : Map[String, @ast.CType]
+  /// 構造体定義のレジストリ（名前 → レイアウト情報）
+  struct_defs : Map[String, @sema.StructInfo]
 }
 
 /// 新しい CodegenContext を作成する
-pub fn CodegenContext::new() -> CodegenContext {
+pub fn CodegenContext::new(
+  struct_defs~ : Map[String, @sema.StructInfo] = {}
+) -> CodegenContext {
   {
     locals: {},
     next_index: 0,
@@ -97,6 +101,7 @@ pub fn CodegenContext::new() -> CodegenContext {
     addr_taken: {},
     temp_local: None,
     var_types: {},
+    struct_defs,
   }
 }
 
@@ -105,7 +110,8 @@ pub fn CodegenContext::new() -> CodegenContext {
 pub fn CodegenContext::from_params(
   params : Array[@ast.Param],
   functions~ : Map[String, Int] = {},
-  addr_taken~ : Map[String, Bool] = {}
+  addr_taken~ : Map[String, Bool] = {},
+  struct_defs~ : Map[String, @sema.StructInfo] = {}
 ) -> CodegenContext {
   let ctx : CodegenContext = {
     locals: {},
@@ -116,6 +122,7 @@ pub fn CodegenContext::from_params(
     addr_taken,
     temp_local: None,
     var_types: {},
+    struct_defs,
   }
   for param in params {
     ctx.locals[param.name] = ctx.next_index
@@ -178,6 +185,17 @@ pub fn CodegenContext::is_stack_var(
 /// スタック変数を登録する: スタックフレーム上に 4 バイト確保し、オフセットを記録する
 pub fn CodegenContext::add_stack_var(self : CodegenContext, name : String) -> Int {
   let offset = self.allocate_on_stack(4)
+  self.stack_vars[name] = offset
+  offset
+}
+
+/// 構造体変数をスタックに配置する: 構造体のサイズ分の領域を確保し、オフセットを記録する
+pub fn CodegenContext::add_struct_stack_var(
+  self : CodegenContext,
+  name : String,
+  struct_size : Int
+) -> Int {
+  let offset = self.allocate_on_stack(struct_size)
   self.stack_vars[name] = offset
   offset
 }
@@ -361,15 +379,21 @@ fn collect_addr_taken_in_stmt(
 }
 
 /// 型のサイズをバイト単位で返す（ポインタ演算のスケーリング用）
-/// 構造体のサイズは現時点では未対応（Phase 4 の構造体タスクで拡張）
-fn size_of_ctype(ty : @ast.CType) -> Int {
+fn size_of_ctype(
+  ty : @ast.CType,
+  struct_defs~ : Map[String, @sema.StructInfo] = {}
+) -> Int {
   match ty {
     Int => 4
     Char => 1
     Void => 0
     Ptr(_) => 4
-    Struct(_) => 4 // TODO: 構造体タスクで正確なサイズに修正
-    Array(elem, count) => size_of_ctype(elem) * count
+    Struct(name) =>
+      match struct_defs.get(name) {
+        Some(info) => info.total_size
+        None => 4 // フォールバック: 未登録構造体は 4 バイト
+      }
+    Array(elem, count) => size_of_ctype(elem, struct_defs~) * count
   }
 }
 
@@ -512,7 +536,7 @@ pub fn emit_expr(
           // ptr + n: ポインタ側を評価し、整数側を sizeof でスケーリング
           emit_expr(lhs, code, ctx)
           emit_expr(rhs, code, ctx)
-          let sz = size_of_ctype(elem)
+          let sz = size_of_ctype(elem, struct_defs=ctx.struct_defs)
           if sz != 1 {
             code.push(op_i32_const)
             for b in @wasm.encode_sleb128(sz) {
@@ -525,7 +549,7 @@ pub fn emit_expr(
         (_, Some(Ptr(elem))) => {
           // n + ptr: 整数側を sizeof でスケーリングしてからポインタ側を加算
           emit_expr(lhs, code, ctx)
-          let sz = size_of_ctype(elem)
+          let sz = size_of_ctype(elem, struct_defs=ctx.struct_defs)
           if sz != 1 {
             code.push(op_i32_const)
             for b in @wasm.encode_sleb128(sz) {
@@ -554,7 +578,7 @@ pub fn emit_expr(
           emit_expr(lhs, code, ctx)
           emit_expr(rhs, code, ctx)
           code.push(op_i32_sub)
-          let sz = size_of_ctype(elem)
+          let sz = size_of_ctype(elem, struct_defs=ctx.struct_defs)
           if sz != 1 {
             code.push(op_i32_const)
             for b in @wasm.encode_sleb128(sz) {
@@ -567,7 +591,7 @@ pub fn emit_expr(
           // ptr - n → ptr - n * sizeof(elem)
           emit_expr(lhs, code, ctx)
           emit_expr(rhs, code, ctx)
-          let sz = size_of_ctype(elem)
+          let sz = size_of_ctype(elem, struct_defs=ctx.struct_defs)
           if sz != 1 {
             code.push(op_i32_const)
             for b in @wasm.encode_sleb128(sz) {
@@ -615,8 +639,15 @@ pub fn emit_expr(
     Ident(name) =>
       match ctx.stack_vars.get(name) {
         Some(offset) =>
-          // スタック配置変数: メモリからロード
-          emit_stack_load(offset, code)
+          // スタック配置変数
+          match ctx.var_types.get(name) {
+            Some(Struct(_)) =>
+              // 構造体変数: アドレスを返す（メンバアクセスやポインタ渡しで使用）
+              emit_stack_addr(offset, code)
+            _ =>
+              // スカラー変数: メモリからロード
+              emit_stack_load(offset, code)
+          }
         None =>
           match ctx.resolve(name) {
             Some(index) => {
@@ -939,11 +970,34 @@ pub fn emit_stmt(
     }
     VarDecl(type_name, name, init) => {
       // 変数の型を記録する（ポインタ演算のスケーリングに必要）
-      match @sema.resolve_type_name(type_name) {
-        Ok(ty) => ctx.var_types[name] = ty
-        Err(_) => ()
+      let resolved_type = match @sema.resolve_type_name(type_name) {
+        Ok(ty) => {
+          ctx.var_types[name] = ty
+          Some(ty)
+        }
+        Err(_) => None
       }
-      if ctx.addr_taken.contains(name) {
+      // 構造体型かどうか判定: 構造体は常にスタック配置（Wasm local に収まらない）
+      let is_struct = match resolved_type {
+        Some(Struct(_)) => true
+        _ => false
+      }
+      if is_struct {
+        // 構造体変数: スタックフレーム上に構造体サイズ分を確保
+        let struct_size = match resolved_type {
+          Some(Struct(sname)) =>
+            match ctx.struct_defs.get(sname) {
+              Some(info) => info.total_size
+              None =>
+                raise CodegenError(
+                  "codegen: 未定義の構造体 '" + sname + "'",
+                )
+            }
+          _ => raise CodegenError("codegen: 構造体型の判定に失敗")
+        }
+        let _offset = ctx.add_struct_stack_var(name, struct_size)
+        // 構造体の初期化は現時点では未対応（メンバアクセスタスクで対応）
+      } else if ctx.addr_taken.contains(name) {
         // アドレスが取られる変数: スタックフレーム上に配置
         let offset = ctx.add_stack_var(name)
         match init {
@@ -1086,11 +1140,17 @@ fn func_def_to_functype(
 fn compile_function(
   params : Array[@ast.Param],
   body : @ast.Stmt,
-  functions : Map[String, Int]
+  functions : Map[String, Int],
+  struct_defs~ : Map[String, @sema.StructInfo] = {}
 ) -> @wasm.FuncBody raise CodegenError {
   // 事前スキャン: アドレスが取られる変数を収集
   let addr_taken = collect_addr_taken_vars(body)
-  let ctx = CodegenContext::from_params(params, functions~, addr_taken~)
+  let ctx = CodegenContext::from_params(
+    params,
+    functions~,
+    addr_taken~,
+    struct_defs~,
+  )
   let code : Array[Byte] = []
   emit_stmt(body, code, ctx)
   // 関数末尾に unreachable を追加
@@ -1137,11 +1197,14 @@ pub fn compile_program(
   let num_imports = 1
   let proc_exit_type_index = 0 // Type Section 内のインデックス
   let proc_exit_func_index = 0 // function index（インポート分）
-  // 第1パス: 関数名 → function index のマッピングを構築
+  // 第1パス: 関数名 → function index のマッピングと構造体定義の登録
   // インポート関数の後にユーザー定義関数を配置する
   let functions : Map[String, Int] = {}
   let func_defs : Array[(@ast.TopLevel, Int)] = []
   let mut func_index = num_imports // インポート数分オフセット
+  // 構造体定義のレジストリ（sema のシンボルテーブルを使用してレイアウト計算）
+  let sym_table = @sema.SymbolTable::new()
+  let struct_defs : Map[String, @sema.StructInfo] = {}
   for top_level in program.top_levels {
     match top_level {
       FuncDef(_, name, _, _) => {
@@ -1151,7 +1214,12 @@ pub fn compile_program(
       }
       GlobalVarDecl(_, _, _) =>
         raise CodegenError("codegen: グローバル変数は未実装（Phase 4 で実装）")
-      StructDef(_, _) => () // 構造体定義はコード生成不要（型情報のみ）
+      StructDef(name, fields) =>
+        // 構造体定義を登録: フィールドレイアウトとサイズを計算
+        match sym_table.register_struct(name, fields) {
+          Ok(info) => struct_defs[name] = info
+          Err(e) => raise CodegenError("codegen: 構造体の登録に失敗: " + e)
+        }
     }
   }
   // 関数が1つもない場合はエラー
@@ -1178,7 +1246,7 @@ pub fn compile_program(
         func_types.push(ft)
         // type index = proc_exit の型(1つ) + ユーザー関数の順番
         type_indices.push(func_types.length() - 1)
-        let fb = compile_function(params, body, functions)
+        let fb = compile_function(params, body, functions, struct_defs~)
         func_bodies.push(fb)
       }
       GlobalVarDecl(_, _, _) => () // 上のパスで既にエラーにしているため到達しない
