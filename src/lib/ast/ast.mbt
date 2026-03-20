@@ -1,3 +1,13 @@
+/// C の型
+pub(all) enum CType {
+  Int                   // int
+  Char                  // char
+  Void                  // void
+  Ptr(CType)            // ポインタ: T*
+  Struct(String)        // 構造体: struct Name
+  Array(CType, Int)     // 配列: T[N]
+} derive(Show, Eq)
+
 /// 二項演算子
 pub(all) enum BinOp {
   Add       // +
