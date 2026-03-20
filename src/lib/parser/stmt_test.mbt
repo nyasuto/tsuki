@@ -139,6 +139,77 @@ test "parse block with var decl and assignment" {
   )
 }
 
+// === 関数定義 ===
+
+/// ヘルパー: ソースコードから関数定義をパースする
+fn parse_func_def_from(source : String) -> Result[@ast.TopLevel, String] {
+  let lexer = @lexer.Lexer::new(source)
+  let tokens = match lexer.tokenize() {
+    Ok(t) => t
+    Err(e) => return Err(e)
+  }
+  let parser = Parser::new(tokens)
+  parser.parse_func_def()
+}
+
+test "parse simple function: int main() { return 42; }" {
+  let result = parse_func_def_from("int main() { return 42; }")
+  inspect!(
+    result,
+    content="Ok(FuncDef(\"int\", \"main\", [], Block([Return(Some(IntLiteral(42)))])))",
+  )
+}
+
+test "parse function with params: int add(int a, int b)" {
+  let result = parse_func_def_from("int add(int a, int b) { return a + b; }")
+  inspect!(
+    result,
+    content="Ok(FuncDef(\"int\", \"add\", [{type_name: \"int\", name: \"a\"}, {type_name: \"int\", name: \"b\"}], Block([Return(Some(BinaryOp(Add, Ident(\"a\"), Ident(\"b\"))))])))",
+  )
+}
+
+test "parse void function with no params" {
+  let result = parse_func_def_from("void noop() { }")
+  inspect!(
+    result,
+    content="Ok(FuncDef(\"void\", \"noop\", [], Block([])))",
+  )
+}
+
+test "parse function with void param" {
+  let result = parse_func_def_from("int main(void) { return 0; }")
+  inspect!(
+    result,
+    content="Ok(FuncDef(\"int\", \"main\", [], Block([Return(Some(IntLiteral(0)))])))",
+  )
+}
+
+test "parse function with pointer param" {
+  let result = parse_func_def_from("int deref(int* p) { return *p; }")
+  inspect!(
+    result,
+    content="Ok(FuncDef(\"int\", \"deref\", [{type_name: \"int*\", name: \"p\"}], Block([Return(Some(UnaryOp(Deref, Ident(\"p\"))))])))",
+  )
+}
+
+test "parse function with multiple params and body" {
+  let result = parse_func_def_from(
+    "int calc(int x, int y, int z) { int r = x + y; return r * z; }",
+  )
+  inspect!(
+    result,
+    content="Ok(FuncDef(\"int\", \"calc\", [{type_name: \"int\", name: \"x\"}, {type_name: \"int\", name: \"y\"}, {type_name: \"int\", name: \"z\"}], Block([VarDecl(\"int\", \"r\", Some(BinaryOp(Add, Ident(\"x\"), Ident(\"y\")))), Return(Some(BinaryOp(Mul, Ident(\"r\"), Ident(\"z\"))))])))",
+  )
+}
+
+test "parse function returning pointer" {
+  let result = parse_func_def_from("int* getptr() { return p; }")
+  inspect!(
+    result,
+    content="Ok(FuncDef(\"int*\", \"getptr\", [], Block([Return(Some(Ident(\"p\")))])))",
+  )
+}
+
 // === エラーケース ===
 
 test "parse return missing semicolon" {

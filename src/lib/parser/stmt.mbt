@@ -152,6 +152,105 @@ fn Parser::parse_expr_stmt(self : Parser) -> Result[@ast.Stmt, String] {
   Ok(@ast.Stmt::ExprStmt(expr))
 }
 
+/// パラメータリストのパース: (type name, type name, ...)
+/// 空のパラメータリスト () や (void) にも対応
+fn Parser::parse_params(self : Parser) -> Result[Array[@ast.Param], String] {
+  match self.expect(@lexer.Token::LParen) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  let params : Array[@ast.Param] = []
+  // 空のパラメータリストまたは (void) のケース
+  if self.check(@lexer.Token::RParen) {
+    self.advance() |> ignore
+    return Ok(params)
+  }
+  if self.check(@lexer.Token::KwVoid) {
+    // (void) の場合: 次が ) ならパラメータなし
+    let saved_pos = self.pos
+    self.advance() |> ignore
+    if self.check(@lexer.Token::RParen) {
+      self.advance() |> ignore
+      return Ok(params)
+    }
+    // void* などのポインタ型パラメータの可能性があるので位置を戻す
+    self.pos = saved_pos
+  }
+  // 最初のパラメータ
+  let first_type = match self.parse_type_name() {
+    Ok(t) => t
+    Err(e) => return Err(e)
+  }
+  let first_name = match self.peek() {
+    Ident(name) => {
+      self.advance() |> ignore
+      name
+    }
+    token => {
+      let pos = self.current_pos()
+      return Err(
+        "expected parameter name, got \{token} at line \{pos.line}, col \{pos.col}",
+      )
+    }
+  }
+  params.push(@ast.Param::{ type_name: first_type, name: first_name })
+  // 残りのパラメータ
+  while self.check(@lexer.Token::Comma) {
+    self.advance() |> ignore
+    let param_type = match self.parse_type_name() {
+      Ok(t) => t
+      Err(e) => return Err(e)
+    }
+    let param_name = match self.peek() {
+      Ident(name) => {
+        self.advance() |> ignore
+        name
+      }
+      token => {
+        let pos = self.current_pos()
+        return Err(
+          "expected parameter name, got \{token} at line \{pos.line}, col \{pos.col}",
+        )
+      }
+    }
+    params.push(@ast.Param::{ type_name: param_type, name: param_name })
+  }
+  match self.expect(@lexer.Token::RParen) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  Ok(params)
+}
+
+/// 関数定義のパース: type name(params) { body }
+pub fn Parser::parse_func_def(self : Parser) -> Result[@ast.TopLevel, String] {
+  let ret_type = match self.parse_type_name() {
+    Ok(t) => t
+    Err(e) => return Err(e)
+  }
+  let func_name = match self.peek() {
+    Ident(name) => {
+      self.advance() |> ignore
+      name
+    }
+    token => {
+      let pos = self.current_pos()
+      return Err(
+        "expected function name, got \{token} at line \{pos.line}, col \{pos.col}",
+      )
+    }
+  }
+  let params = match self.parse_params() {
+    Ok(p) => p
+    Err(e) => return Err(e)
+  }
+  let body = match self.parse_block() {
+    Ok(b) => b
+    Err(e) => return Err(e)
+  }
+  Ok(@ast.TopLevel::FuncDef(ret_type, func_name, params, body))
+}
+
 /// ブロックのパース: { stmt* }
 pub fn Parser::parse_block(self : Parser) -> Result[@ast.Stmt, String] {
   match self.expect(@lexer.Token::LBrace) {
