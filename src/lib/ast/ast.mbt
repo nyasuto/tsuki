@@ -51,3 +51,15 @@ pub(all) enum Stmt {
   While(Expr, Stmt)                    // while 文: 条件, 本体
   For(Stmt?, Expr?, Expr?, Stmt)       // for 文: 初期化, 条件, 更新, 本体
 } derive(Show, Eq)
+
+/// パラメータ: 型名と変数名のペア
+pub(all) struct Param {
+  type_name : String
+  name : String
+} derive(Show, Eq)
+
+/// トップレベル定義
+pub(all) enum TopLevel {
+  FuncDef(String, String, Array[Param], Stmt)       // 関数定義: 戻り値型, 関数名, パラメータ, 本体(Block)
+  GlobalVarDecl(String, String, Expr?)               // グローバル変数宣言: 型名, 変数名, 初期値
+} derive(Show, Eq)
