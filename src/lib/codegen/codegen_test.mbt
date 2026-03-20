@@ -452,3 +452,137 @@ test "emit_stmt: return with unary neg" {
   // i32.const 0; local.get 0; i32.sub; return
   inspect(bytes_to_hex(code), content="41 00 20 00 6B 0F")
 }
+
+// === 変数宣言と代入テスト ===
+
+/// int x = 42; → i32.const 42; local.set 0
+test "emit_stmt: var decl with init" {
+  let ctx = CodegenContext::new()
+  let code : Array[Byte] = []
+  emit_stmt(@ast.VarDecl("int", "x", Some(@ast.IntLiteral(42))), code, ctx)
+  // i32.const 42; local.set 0
+  inspect(bytes_to_hex(code), content="41 2A 21 00")
+  // x が local index 0 に登録されている
+  inspect(ctx.resolve("x"), content="Some(0)")
+}
+
+/// int x; → 命令なし（初期化なし宣言）
+test "emit_stmt: var decl without init" {
+  let ctx = CodegenContext::new()
+  let code : Array[Byte] = []
+  emit_stmt(@ast.VarDecl("int", "x", None), code, ctx)
+  // 命令は生成されない
+  inspect(bytes_to_hex(code), content="")
+  // x が local index 0 に登録されている
+  inspect(ctx.resolve("x"), content="Some(0)")
+}
+
+/// int x = 10; int y = 20; → 2つの変数が別々の local index に割り当てられる
+test "emit_stmt: multiple var decls" {
+  let ctx = CodegenContext::new()
+  let code : Array[Byte] = []
+  emit_stmt(@ast.VarDecl("int", "x", Some(@ast.IntLiteral(10))), code, ctx)
+  emit_stmt(@ast.VarDecl("int", "y", Some(@ast.IntLiteral(20))), code, ctx)
+  // i32.const 10; local.set 0; i32.const 20; local.set 1
+  inspect(bytes_to_hex(code), content="41 0A 21 00 41 14 21 01")
+  inspect(ctx.resolve("x"), content="Some(0)")
+  inspect(ctx.resolve("y"), content="Some(1)")
+}
+
+/// パラメータありの関数内で変数宣言: int add(int a, int b) { int sum = a + b; }
+test "emit_stmt: var decl with params" {
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
+  )
+  let code : Array[Byte] = []
+  emit_stmt(
+    @ast.VarDecl(
+      "int",
+      "sum",
+      Some(@ast.BinaryOp(Add, @ast.Ident("a"), @ast.Ident("b"))),
+    ),
+    code,
+    ctx,
+  )
+  // local.get 0; local.get 1; i32.add; local.set 2
+  inspect(bytes_to_hex(code), content="20 00 20 01 6A 21 02")
+  inspect(ctx.resolve("sum"), content="Some(2)")
+}
+
+/// x = 5; → i32.const 5; local.tee 0（Assign は値を返す式）
+test "emit_expr: assign" {
+  let ctx = CodegenContext::new()
+  let _ = ctx.add_local("x")
+  let code : Array[Byte] = []
+  emit_expr(@ast.Assign(@ast.Ident("x"), @ast.IntLiteral(5)), code, ctx)
+  // i32.const 5; local.tee 0
+  inspect(bytes_to_hex(code), content="41 05 22 00")
+}
+
+/// 未定義変数への代入はエラー
+test "emit_expr: assign undefined variable error" {
+  let ctx = CodegenContext::new()
+  let code : Array[Byte] = []
+  let result : Result[Unit, Error] = try {
+    Ok(emit_expr(@ast.Assign(@ast.Ident("x"), @ast.IntLiteral(5)), code, ctx))
+  } catch {
+    e => Err(e)
+  }
+  inspect(result is Err(_), content="true")
+}
+
+/// ExprStmt: 式文は結果を drop する
+test "emit_stmt: expr stmt" {
+  let ctx = CodegenContext::new()
+  let _ = ctx.add_local("x")
+  let code : Array[Byte] = []
+  emit_stmt(
+    @ast.ExprStmt(@ast.Assign(@ast.Ident("x"), @ast.IntLiteral(5))),
+    code,
+    ctx,
+  )
+  // i32.const 5; local.tee 0; drop
+  inspect(bytes_to_hex(code), content="41 05 22 00 1A")
+}
+
+/// Block: 複数の文を順に実行
+test "emit_stmt: block" {
+  let ctx = CodegenContext::new()
+  let code : Array[Byte] = []
+  emit_stmt(
+    @ast.Block(
+      [
+        @ast.VarDecl("int", "x", Some(@ast.IntLiteral(10))),
+        @ast.VarDecl("int", "y", Some(@ast.IntLiteral(20))),
+        @ast.Return(
+          Some(@ast.BinaryOp(Add, @ast.Ident("x"), @ast.Ident("y"))),
+        ),
+      ],
+    ),
+    code,
+    ctx,
+  )
+  // i32.const 10; local.set 0; i32.const 20; local.set 1; local.get 0; local.get 1; i32.add; return
+  inspect(
+    bytes_to_hex(code),
+    content="41 0A 21 00 41 14 21 01 20 00 20 01 6A 0F",
+  )
+}
+
+/// 統合: int x = 10; int y = 20; return x + y;
+test "emit_stmt: var decl and return" {
+  let ctx = CodegenContext::new()
+  let code : Array[Byte] = []
+  emit_stmt(@ast.VarDecl("int", "x", Some(@ast.IntLiteral(10))), code, ctx)
+  emit_stmt(@ast.VarDecl("int", "y", Some(@ast.IntLiteral(20))), code, ctx)
+  emit_stmt(
+    @ast.Return(Some(@ast.BinaryOp(Add, @ast.Ident("x"), @ast.Ident("y")))),
+    code,
+    ctx,
+  )
+  // i32.const 10; local.set 0; i32.const 20; local.set 1; local.get 0; local.get 1; i32.add; return
+  inspect(
+    bytes_to_hex(code),
+    content="41 0A 21 00 41 14 21 01 20 00 20 01 6A 0F",
+  )
+}

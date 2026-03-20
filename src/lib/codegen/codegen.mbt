@@ -27,8 +27,10 @@ let op_i32_or : Byte = b'\x72'
 let op_i32_xor : Byte = b'\x73'
 let op_i32_shl : Byte = b'\x74'
 let op_i32_shr_s : Byte = b'\x75'
+let op_drop : Byte = b'\x1A'
 let op_call : Byte = b'\x10'
 let op_return : Byte = b'\x0F'
+let op_local_tee : Byte = b'\x22'
 
 /// コード生成コンテキスト: 変数名 → Wasm local index のマッピングを管理する
 pub struct CodegenContext {
@@ -190,8 +192,24 @@ pub fn emit_expr(
             "codegen: 未定義の関数 '" + name + "'",
           )
       }
+    Assign(Ident(name), value) =>
+      match ctx.resolve(name) {
+        Some(index) => {
+          emit_expr(value, code, ctx)
+          // local.tee: 値をスタックに残しつつ local に書き込む（C の代入は値を返す）
+          code.push(op_local_tee)
+          let bytes = @wasm.encode_uleb128(index)
+          for b in bytes {
+            code.push(b)
+          }
+        }
+        None =>
+          raise CodegenError(
+            "codegen: 未定義の変数 '" + name + "'",
+          )
+      }
     Assign(_, _) =>
-      raise CodegenError("codegen: Assign は未実装（変数代入タスクで実装）")
+      raise CodegenError("codegen: 左辺値が変数ではありません（ポインタ代入は Phase 4 で実装）")
     StringLiteral(_) =>
       raise CodegenError("codegen: StringLiteral は未実装（Phase 5 で実装）")
     UnaryOp(Deref, _) =>
@@ -226,12 +244,25 @@ pub fn emit_stmt(
       code.push(op_return)
     }
     Return(None) => code.push(op_return)
-    VarDecl(_, _, _) =>
-      raise CodegenError("codegen: VarDecl は未実装（変数宣言タスクで実装）")
-    ExprStmt(_) =>
-      raise CodegenError("codegen: ExprStmt は未実装")
-    Block(_) =>
-      raise CodegenError("codegen: Block は未実装")
+    VarDecl(_type_name, name, init) => {
+      let index = ctx.add_local(name)
+      match init {
+        Some(expr) => {
+          emit_expr(expr, code, ctx)
+          emit_local_set(index, code)
+        }
+        None => ()
+      }
+    }
+    ExprStmt(expr) => {
+      emit_expr(expr, code, ctx)
+      // 式文の結果はスタックから捨てる
+      code.push(op_drop)
+    }
+    Block(stmts) =>
+      for stmt in stmts {
+        emit_stmt(stmt, code, ctx)
+      }
     If(_, _, _) =>
       raise CodegenError("codegen: If は未実装（Phase 3 で実装）")
     While(_, _) =>
