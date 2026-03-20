@@ -203,6 +203,59 @@ test "parse deref and addr_of" {
   inspect(expr2, content="Ok(UnaryOp(AddrOf, Ident(\"x\")))")
 }
 
+test "parse full precedence chain: arithmetic > comparison > logical" {
+  // 1 + 2 < 3 && 4 == 5 || 6
+  // 期待: || が最も弱く、&& がその次、== と < が算術より強い
+  // ((((1 + 2) < 3) && (4 == 5)) || 6)
+  let parser = make_parser("1 + 2 < 3 && 4 == 5 || 6")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(BinaryOp(LogOr, BinaryOp(LogAnd, BinaryOp(Lt, BinaryOp(Add, IntLiteral(1), IntLiteral(2)), IntLiteral(3)), BinaryOp(Eq, IntLiteral(4), IntLiteral(5))), IntLiteral(6)))",
+  )
+}
+
+test "parse precedence: mul > add > shift > comparison > equality > bitand > bitxor > bitor > logand > logor" {
+  // a * b + c >> d < e == f & g ^ h | i && j || k
+  // 完全な C 優先順位チェイン
+  let parser = make_parser("a * b + c >> d < e == f & g ^ h | i && j || k")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(BinaryOp(LogOr, BinaryOp(LogAnd, BinaryOp(BitOr, BinaryOp(BitXor, BinaryOp(BitAnd, BinaryOp(Eq, BinaryOp(Lt, BinaryOp(Shr, BinaryOp(Add, BinaryOp(Mul, Ident(\"a\"), Ident(\"b\")), Ident(\"c\")), Ident(\"d\")), Ident(\"e\")), Ident(\"f\")), Ident(\"g\")), Ident(\"h\")), Ident(\"i\")), Ident(\"j\")), Ident(\"k\")))",
+  )
+}
+
+test "parse modulo and division" {
+  let parser = make_parser("10 / 3 % 2")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(BinaryOp(Mod, BinaryOp(Div, IntLiteral(10), IntLiteral(3)), IntLiteral(2)))",
+  )
+}
+
+test "parse subtraction left associativity" {
+  let parser = make_parser("10 - 3 - 2")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(BinaryOp(Sub, BinaryOp(Sub, IntLiteral(10), IntLiteral(3)), IntLiteral(2)))",
+  )
+}
+
+test "parse all comparison operators" {
+  let parser = make_parser("a <= b")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(BinaryOp(Le, Ident(\"a\"), Ident(\"b\")))")
+  let parser2 = make_parser("a >= b")
+  let expr2 = parser2.parse_expr()
+  inspect(expr2, content="Ok(BinaryOp(Ge, Ident(\"a\"), Ident(\"b\")))")
+  let parser3 = make_parser("a != b")
+  let expr3 = parser3.parse_expr()
+  inspect(expr3, content="Ok(BinaryOp(Ne, Ident(\"a\"), Ident(\"b\")))")
+}
+
 test "parse error on unexpected token" {
   let parser = make_parser(";")
   let expr = parser.parse_expr()
