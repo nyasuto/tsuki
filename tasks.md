@@ -218,7 +218,7 @@
 - [x] 仮説 2 の評価: moonbit-practice プラグインの有効性（初回コンパイル通過率の推移）
 - [x] 仮説 3 の評価: パターンマッチング × AST 操作の体験（Go との比較所感）
 - [x] 仮説 4 の評価: MoonBit → Wasm の入れ子構造の実用性
-- [ ] Ralph Loop × MoonBit の tips と落とし穴のまとめ
+- [x] Ralph Loop × MoonBit の tips と落とし穴のまとめ
 - [ ] 総合所感と今後の展望
 
 ### Phase 6 完了条件
