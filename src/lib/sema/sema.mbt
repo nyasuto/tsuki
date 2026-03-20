@@ -253,3 +253,114 @@ pub fn SymbolTable::lookup_struct(
 ) -> Option[StructInfo] {
   self.struct_defs.get(name)
 }
+
+test "edit_distance: identical strings" {
+  inspect(edit_distance("hello", "hello"), content="0")
+}
+
+test "edit_distance: one character difference" {
+  inspect(edit_distance("count", "counr"), content="1")
+}
+
+test "edit_distance: insertion" {
+  inspect(edit_distance("cat", "cart"), content="1")
+}
+
+test "edit_distance: deletion" {
+  inspect(edit_distance("cart", "cat"), content="1")
+}
+
+test "edit_distance: completely different" {
+  inspect(edit_distance("abc", "xyz"), content="3")
+}
+
+test "edit_distance: empty strings" {
+  inspect(edit_distance("", ""), content="0")
+  inspect(edit_distance("abc", ""), content="3")
+  inspect(edit_distance("", "abc"), content="3")
+}
+
+/// スコープチェイン内の全シンボル名を収集する（サジェスト用）
+pub fn SymbolTable::all_symbol_names(self : SymbolTable) -> Array[String] {
+  let names : Array[String] = []
+  let seen : Map[String, Bool] = Map::new()
+  for i = self.scopes.length() - 1; i >= 0; i = i - 1 {
+    self.scopes[i].symbols.each(fn(name, _sym) {
+      match seen.get(name) {
+        Some(_) => ()
+        None => {
+          seen.set(name, true)
+          names.push(name)
+        }
+      }
+    })
+  }
+  names
+}
+
+/// 2つの文字列間のレーベンシュタイン距離を計算する
+fn edit_distance(a : String, b : String) -> Int {
+  let m = a.length()
+  let n = b.length()
+  if m == 0 {
+    return n
+  }
+  if n == 0 {
+    return m
+  }
+  // 1行分のDPバッファ（省メモリ）
+  let prev : Array[Int] = Array::make(n + 1, 0)
+  let curr : Array[Int] = Array::make(n + 1, 0)
+  for j = 0; j <= n; j = j + 1 {
+    prev[j] = j
+  }
+  for i = 1; i <= m; i = i + 1 {
+    curr[0] = i
+    for j = 1; j <= n; j = j + 1 {
+      let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 }
+      let del = prev[j] + 1
+      let ins = curr[j - 1] + 1
+      let sub = prev[j - 1] + cost
+      let mut min = del
+      if ins < min {
+        min = ins
+      }
+      if sub < min {
+        min = sub
+      }
+      curr[j] = min
+    }
+    for j = 0; j <= n; j = j + 1 {
+      prev[j] = curr[j]
+    }
+  }
+  prev[n]
+}
+
+/// 未定義シンボルに対して類似名をサジェストする
+/// 編集距離が閾値以内の最も近い名前を返す
+pub fn SymbolTable::suggest_similar(
+  self : SymbolTable,
+  name : String
+) -> String {
+  let candidates = self.all_symbol_names()
+  let mut best_name = ""
+  let mut best_dist = 2147483647 // max int
+  for c in candidates {
+    let d = edit_distance(name, c)
+    if d < best_dist {
+      best_dist = d
+      best_name = c
+    }
+  }
+  // 閾値: 名前の長さの半分以下、かつ最大3
+  let threshold = {
+    let half = (name.length() + 1) / 2
+    if half > 3 { 3 } else { half }
+  }
+  if best_dist <= threshold && best_name.length() > 0 {
+    "; did you mean '" + best_name + "'?"
+  } else {
+    ""
+  }
+}

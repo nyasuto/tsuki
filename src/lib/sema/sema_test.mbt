@@ -318,3 +318,51 @@ test "resolve_type_name: char[256]" {
 test "resolve_type_name: int*[5]" {
   inspect(resolve_type_name("int*[5]"), content="Ok(Array(Ptr(Int), 5))")
 }
+
+// === suggest_similar テスト ===
+
+test "SymbolTable: suggest_similar finds close match" {
+  let st = SymbolTable::new()
+  let _ = st.add_symbol("count", Variable(@ast.CType::Int))
+  let _ = st.add_symbol("total", Variable(@ast.CType::Int))
+  // "counr" は "count" と距離1 → サジェストされる
+  inspect(st.suggest_similar("counr"), content="; did you mean 'count'?")
+}
+
+test "SymbolTable: suggest_similar no match for distant name" {
+  let st = SymbolTable::new()
+  let _ = st.add_symbol("x", Variable(@ast.CType::Int))
+  // "foobar" は "x" と距離が大きい → サジェストなし
+  inspect(st.suggest_similar("foobar"), content="")
+}
+
+test "SymbolTable: suggest_similar with function names" {
+  let st = SymbolTable::new()
+  let _ = st.add_symbol(
+    "printf",
+    Function(@ast.CType::Int, [@ast.CType::Ptr(@ast.CType::Char)]),
+  )
+  // "prinf" は "printf" と距離1 → サジェストされる
+  inspect(st.suggest_similar("prinf"), content="; did you mean 'printf'?")
+}
+
+test "SymbolTable: suggest_similar picks closest match" {
+  let st = SymbolTable::new()
+  let _ = st.add_symbol("value", Variable(@ast.CType::Int))
+  let _ = st.add_symbol("count", Variable(@ast.CType::Int))
+  let _ = st.add_symbol("index", Variable(@ast.CType::Int))
+  // "valur" は "value" と距離1
+  inspect(st.suggest_similar("valur"), content="; did you mean 'value'?")
+}
+
+// === all_symbol_names テスト ===
+
+test "SymbolTable: all_symbol_names collects from all scopes" {
+  let st = SymbolTable::new()
+  let _ = st.add_symbol("global_x", Variable(@ast.CType::Int))
+  st.enter_scope()
+  let _ = st.add_symbol("local_y", Variable(@ast.CType::Int))
+  let names = st.all_symbol_names()
+  // 両方のスコープからシンボルが収集される
+  inspect(names.length(), content="2")
+}

@@ -306,7 +306,14 @@ pub fn TypeChecker::transform_expr(
             Function(ret_ty, _) =>
               Ok({ kind: @ast.TypedExprKind::Ident(name), ty: ret_ty })
           }
-        None => Err("undefined variable: '" + name + "'" + @ast.format_pos(pos))
+        None =>
+          Err(
+            "undefined variable: '" +
+            name +
+            "'" +
+            @ast.format_pos(pos) +
+            self.symbols.suggest_similar(name),
+          )
       }
     BinaryOp(op, lhs, rhs) => {
       let typed_lhs = match self.transform_expr(lhs) {
@@ -390,7 +397,14 @@ pub fn TypeChecker::transform_expr(
             }
             Variable(_) => Err("'" + name + "' is not a function" + @ast.format_pos(pos))
           }
-        None => Err("undefined function: '" + name + "'" + @ast.format_pos(pos))
+        None =>
+          Err(
+            "undefined function: '" +
+            name +
+            "'" +
+            @ast.format_pos(pos) +
+            self.symbols.suggest_similar(name),
+          )
       }
     MemberAccess(base, field_name) => {
       let typed_base = match self.transform_expr(base) {

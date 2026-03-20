@@ -205,6 +205,32 @@ test "TypeChecker: undefined variable" {
   )
 }
 
+test "TypeChecker: undefined variable with suggestion" {
+  // int main() { int count = 1; return counr; }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "main",
+        [],
+        s(
+          Block(
+            [
+              s(VarDecl("int", "count", Some(e(IntLiteral(1))))),
+              s(Return(Some(e(Ident("counr"))))),
+            ],
+          ),
+        ),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(
+    tc.check_program(program),
+    content="Err(\"undefined variable: 'counr'; did you mean 'count'?\")",
+  )
+}
+
 test "TypeChecker: undefined function call" {
   // int main() { return foo(); }
   let program : @ast.Program = {
@@ -221,6 +247,52 @@ test "TypeChecker: undefined function call" {
   inspect(
     tc.check_program(program),
     content="Err(\"undefined function: 'foo'\")",
+  )
+}
+
+test "TypeChecker: undefined function with suggestion" {
+  // int add(int a, int b) { return a + b; }
+  // int main() { return adb(1, 2); }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "add",
+        [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
+        s(
+          Block(
+            [
+              s(
+                Return(
+                  Some(e(BinaryOp(Add, e(Ident("a")), e(Ident("b"))))),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      FuncDef(
+        "int",
+        "main",
+        [],
+        s(
+          Block(
+            [
+              s(
+                Return(
+                  Some(e(Call("adb", [e(IntLiteral(1)), e(IntLiteral(2))]))),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(
+    tc.check_program(program),
+    content="Err(\"undefined function: 'adb'; did you mean 'add'?\")",
   )
 }
 
