@@ -177,9 +177,9 @@
 - [x] 配列添字アクセスの Codegen（Phase 4 のポインタ演算を再利用）
 
 ### 文字列
-- [ ] 文字列リテラル → Wasm data section への埋め込み
-- [ ] 文字列リテラルの型: `char*`（data section 内のアドレス）
-- [ ] Data Section のエンコーディング
+- [x] 文字列リテラル → Wasm data section への埋め込み
+- [x] 文字列リテラルの型: `char*`（data section 内のアドレス）
+- [x] Data Section のエンコーディング
 
 ### 簡易 malloc
 - [ ] バンプアロケータの実装（Wasm global でヒープポインタ管理）

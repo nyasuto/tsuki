@@ -88,11 +88,14 @@ pub struct CodegenContext {
   struct_defs : Map[String, @sema.StructInfo]
   /// 関数名 → 戻り値型名のマッピング（void 関数の判定に使用）
   func_return_types : Map[String, String]
+  /// 文字列プール: 文字列リテラルのアドレス管理（全関数で共有）
+  string_pool : StringPool
 }
 
 /// 新しい CodegenContext を作成する
 pub fn CodegenContext::new(
-  struct_defs~ : Map[String, @sema.StructInfo] = {}
+  struct_defs~ : Map[String, @sema.StructInfo] = {},
+  string_pool~ : StringPool = StringPool::new()
 ) -> CodegenContext {
   {
     locals: {},
@@ -105,6 +108,7 @@ pub fn CodegenContext::new(
     var_types: {},
     struct_defs,
     func_return_types: {},
+    string_pool,
   }
 }
 
@@ -115,7 +119,8 @@ pub fn CodegenContext::from_params(
   functions~ : Map[String, Int] = {},
   addr_taken~ : Map[String, Bool] = {},
   struct_defs~ : Map[String, @sema.StructInfo] = {},
-  func_return_types~ : Map[String, String] = {}
+  func_return_types~ : Map[String, String] = {},
+  string_pool~ : StringPool = StringPool::new()
 ) -> CodegenContext {
   let ctx : CodegenContext = {
     locals: {},
@@ -128,6 +133,7 @@ pub fn CodegenContext::from_params(
     var_types: {},
     struct_defs,
     func_return_types,
+    string_pool,
   }
   for param in params {
     ctx.locals[param.name] = ctx.next_index
@@ -892,8 +898,16 @@ pub fn emit_expr(
     }
     Assign(_, _) =>
       raise CodegenError("codegen: 左辺値が変数ではありません")
-    StringLiteral(_) =>
-      raise CodegenError("codegen: StringLiteral は未実装（Phase 5 で実装）")
+    StringLiteral(s) => {
+      // 文字列リテラルをプールに登録し、data section 内のアドレスを取得
+      let addr = ctx.string_pool.add(s)
+      // i32.const <address> をスタックに積む
+      code.push(op_i32_const)
+      let addr_bytes = @wasm.encode_sleb128(addr)
+      for b in addr_bytes {
+        code.push(b)
+      }
+    }
     UnaryOp(PreInc, Ident(name)) =>
       // ++x: x = x + 1; 新しい値を返す
       match ctx.stack_vars.get(name) {
@@ -1339,7 +1353,8 @@ fn compile_function(
   functions : Map[String, Int],
   struct_defs~ : Map[String, @sema.StructInfo] = {},
   return_type~ : String = "int",
-  func_return_types~ : Map[String, String] = {}
+  func_return_types~ : Map[String, String] = {},
+  string_pool~ : StringPool = StringPool::new()
 ) -> @wasm.FuncBody raise CodegenError {
   // 事前スキャン: アドレスが取られる変数を収集
   let addr_taken = collect_addr_taken_vars(body)
@@ -1349,6 +1364,7 @@ fn compile_function(
     addr_taken~,
     struct_defs~,
     func_return_types~,
+    string_pool~,
   )
   let code : Array[Byte] = []
   emit_stmt(body, code, ctx)
@@ -1431,6 +1447,8 @@ pub fn compile_program(
   if func_defs.is_empty() {
     raise CodegenError("codegen: プログラムに関数定義がありません")
   }
+  // 文字列プール: 全関数で共有し、文字列リテラルのアドレスを管理する
+  let string_pool = StringPool::new()
   // 第2パス: FuncType と FuncBody を収集
   // Type Section の構成: [proc_exit の型, ユーザー関数の型..., _start の型]
   let func_types : Array[@wasm.FuncType] = Array::new(
@@ -1453,7 +1471,7 @@ pub fn compile_program(
         type_indices.push(func_types.length() - 1)
         let fb = compile_function(
           params, body, functions, struct_defs~, return_type~,
-          func_return_types~,
+          func_return_types~, string_pool~,
         )
         func_bodies.push(fb)
       }
@@ -1555,6 +1573,14 @@ pub fn compile_program(
   let code_sec = @wasm.encode_code_section(func_bodies)
   for b in code_sec {
     result.push(b)
+  }
+  // Data Section: 文字列リテラルを線形メモリに埋め込む
+  if not(string_pool.is_empty()) {
+    let data_segments = string_pool.to_data_segments()
+    let data_sec = @wasm.encode_data_section(data_segments)
+    for b in data_sec {
+      result.push(b)
+    }
   }
   result
 }
