@@ -64,6 +64,12 @@ fn Parser::parse_type_name(self : Parser) -> Result[String, String] {
   Ok(result)
 }
 
+/// 位置情報付き Stmt を作成するヘルパー
+fn Parser::make_stmt(self : Parser, kind : @ast.StmtKind, pos : @lexer.Pos) -> @ast.Stmt {
+  let _ = self
+  { kind, pos }
+}
+
 /// 文をパースする（公開エントリポイント）
 pub fn Parser::parse_stmt(self : Parser) -> Result[@ast.Stmt, String] {
   match self.peek() {
@@ -90,6 +96,7 @@ pub fn Parser::parse_stmt(self : Parser) -> Result[@ast.Stmt, String] {
 
 /// if 文のパース: if (expr) stmt または if (expr) stmt else stmt
 fn Parser::parse_if_stmt(self : Parser) -> Result[@ast.Stmt, String] {
+  let pos = self.current_pos()
   match self.expect(@lexer.Token::KwIf) {
     Ok(_) => ()
     Err(e) => return Err(e)
@@ -119,11 +126,12 @@ fn Parser::parse_if_stmt(self : Parser) -> Result[@ast.Stmt, String] {
   } else {
     None
   }
-  Ok(@ast.Stmt::If(cond, then_stmt, else_stmt))
+  Ok(self.make_stmt(@ast.StmtKind::If(cond, then_stmt, else_stmt), pos))
 }
 
 /// while 文のパース: while (expr) stmt
 fn Parser::parse_while_stmt(self : Parser) -> Result[@ast.Stmt, String] {
+  let pos = self.current_pos()
   match self.expect(@lexer.Token::KwWhile) {
     Ok(_) => ()
     Err(e) => return Err(e)
@@ -144,11 +152,12 @@ fn Parser::parse_while_stmt(self : Parser) -> Result[@ast.Stmt, String] {
     Ok(s) => s
     Err(e) => return Err(e)
   }
-  Ok(@ast.Stmt::While(cond, body))
+  Ok(self.make_stmt(@ast.StmtKind::While(cond, body), pos))
 }
 
 /// for 文のパース: for (init; cond; update) body
 fn Parser::parse_for_stmt(self : Parser) -> Result[@ast.Stmt, String] {
+  let pos = self.current_pos()
   match self.expect(@lexer.Token::KwFor) {
     Ok(_) => ()
     Err(e) => return Err(e)
@@ -202,11 +211,12 @@ fn Parser::parse_for_stmt(self : Parser) -> Result[@ast.Stmt, String] {
     Ok(s) => s
     Err(e) => return Err(e)
   }
-  Ok(@ast.Stmt::For(init, cond, update, body))
+  Ok(self.make_stmt(@ast.StmtKind::For(init, cond, update, body), pos))
 }
 
 /// return 文のパース: return; または return expr;
 fn Parser::parse_return_stmt(self : Parser) -> Result[@ast.Stmt, String] {
+  let pos = self.current_pos()
   match self.expect(@lexer.Token::KwReturn) {
     Ok(_) => ()
     Err(e) => return Err(e)
@@ -214,7 +224,7 @@ fn Parser::parse_return_stmt(self : Parser) -> Result[@ast.Stmt, String] {
   // セミコロンが来たら return void
   if self.check(@lexer.Token::Semi) {
     self.advance() |> ignore
-    return Ok(@ast.Stmt::Return(None))
+    return Ok(self.make_stmt(@ast.StmtKind::Return(None), pos))
   }
   let expr = match self.parse_expr() {
     Ok(e) => e
@@ -224,11 +234,12 @@ fn Parser::parse_return_stmt(self : Parser) -> Result[@ast.Stmt, String] {
     Ok(_) => ()
     Err(e) => return Err(e)
   }
-  Ok(@ast.Stmt::Return(Some(expr)))
+  Ok(self.make_stmt(@ast.StmtKind::Return(Some(expr)), pos))
 }
 
 /// 変数宣言のパース: type name; または type name = expr; または type name[N];
 fn Parser::parse_var_decl(self : Parser) -> Result[@ast.Stmt, String] {
+  let pos = self.current_pos()
   let type_name = match self.parse_type_name() {
     Ok(t) => t
     Err(e) => return Err(e)
@@ -239,9 +250,9 @@ fn Parser::parse_var_decl(self : Parser) -> Result[@ast.Stmt, String] {
       name
     }
     token => {
-      let pos = self.current_pos()
+      let err_pos = self.current_pos()
       return Err(
-        "expected variable name, got \{token} at line \{pos.line}, col \{pos.col}",
+        "expected variable name, got \{token} at line \{err_pos.line}, col \{err_pos.col}",
       )
     }
   }
@@ -260,9 +271,9 @@ fn Parser::parse_var_decl(self : Parser) -> Result[@ast.Stmt, String] {
           n
         }
         token => {
-          let pos = self.current_pos()
+          let err_pos = self.current_pos()
           return Err(
-            "expected array size, got \{token} at line \{pos.line}, col \{pos.col}",
+            "expected array size, got \{token} at line \{err_pos.line}, col \{err_pos.col}",
           )
         }
       }
@@ -296,11 +307,19 @@ fn Parser::parse_var_decl(self : Parser) -> Result[@ast.Stmt, String] {
   // サイズ省略配列 (e.g. "int[]") の場合、初期化リストから要素数を推論
   let type_name = if type_name.has_suffix("[]") {
     match init_expr {
-      Some(InitList(elements)) => {
-        let base = type_name.substring(end=type_name.length() - 2)
-        base + "[" + elements.length().to_string() + "]"
-      }
-      _ => return Err("array declared with empty brackets must have an initializer list")
+      Some(expr) =>
+        match expr.kind {
+          InitList(elements) => {
+            let base = type_name.substring(end=type_name.length() - 2)
+            base + "[" + elements.length().to_string() + "]"
+          }
+          _ => return Err(
+            "array declared with empty brackets must have an initializer list at line \{pos.line}, col \{pos.col}",
+          )
+        }
+      _ => return Err(
+        "array declared with empty brackets must have an initializer list at line \{pos.line}, col \{pos.col}",
+      )
     }
   } else {
     type_name
@@ -309,11 +328,12 @@ fn Parser::parse_var_decl(self : Parser) -> Result[@ast.Stmt, String] {
     Ok(_) => ()
     Err(e) => return Err(e)
   }
-  Ok(@ast.Stmt::VarDecl(type_name, var_name, init_expr))
+  Ok(self.make_stmt(@ast.StmtKind::VarDecl(type_name, var_name, init_expr), pos))
 }
 
 /// 初期化リストのパース: {expr, expr, ...}
 fn Parser::parse_init_list(self : Parser) -> Result[@ast.Expr, String] {
+  let pos = self.current_pos()
   match self.expect(@lexer.Token::LBrace) {
     Ok(_) => ()
     Err(e) => return Err(e)
@@ -341,11 +361,12 @@ fn Parser::parse_init_list(self : Parser) -> Result[@ast.Expr, String] {
     Ok(_) => ()
     Err(e) => return Err(e)
   }
-  Ok(@ast.Expr::InitList(elements))
+  Ok(self.make_expr(@ast.ExprKind::InitList(elements), pos))
 }
 
 /// 式文のパース: expr;
 fn Parser::parse_expr_stmt(self : Parser) -> Result[@ast.Stmt, String] {
+  let pos = self.current_pos()
   let expr = match self.parse_expr() {
     Ok(e) => e
     Err(e) => return Err(e)
@@ -354,7 +375,7 @@ fn Parser::parse_expr_stmt(self : Parser) -> Result[@ast.Stmt, String] {
     Ok(_) => ()
     Err(e) => return Err(e)
   }
-  Ok(@ast.Stmt::ExprStmt(expr))
+  Ok(self.make_stmt(@ast.StmtKind::ExprStmt(expr), pos))
 }
 
 /// パラメータリストのパース: (type name, type name, ...)
@@ -553,6 +574,7 @@ pub fn Parser::parse_func_def(self : Parser) -> Result[@ast.TopLevel, String] {
 
 /// ブロックのパース: { stmt* }
 pub fn Parser::parse_block(self : Parser) -> Result[@ast.Stmt, String] {
+  let pos = self.current_pos()
   match self.expect(@lexer.Token::LBrace) {
     Ok(_) => ()
     Err(e) => return Err(e)
@@ -569,5 +591,5 @@ pub fn Parser::parse_block(self : Parser) -> Result[@ast.Stmt, String] {
     Ok(_) => ()
     Err(e) => return Err(e)
   }
-  Ok(@ast.Stmt::Block(stmts))
+  Ok(self.make_stmt(@ast.StmtKind::Block(stmts), pos))
 }

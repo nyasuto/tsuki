@@ -43,23 +43,44 @@ pub(all) enum UnaryOp {
   PostDec   // x--（後置デクリメント）
 } derive(Show, Eq)
 
-/// 式
-pub(all) enum Expr {
-  IntLiteral(Int)                        // 整数リテラル
-  CharLiteral(Char)                      // 文字リテラル
-  StringLiteral(String)                  // 文字列リテラル
-  Ident(String)                          // 識別子
-  BinaryOp(BinOp, Expr, Expr)           // 二項演算: op, lhs, rhs
-  UnaryOp(UnaryOp, Expr)                // 単項演算: op, operand
-  Call(String, Array[Expr])              // 関数呼び出し: name, args
-  Assign(Expr, Expr)                    // 代入: lhs, rhs
-  MemberAccess(Expr, String)            // メンバアクセス: base.field
-  SizeOf(String)                        // sizeof(型名): 型名文字列
-  InitList(Array[Expr])                 // 初期化リスト: {expr, expr, ...}
+/// 式の種類
+pub(all) enum ExprKind {
+  IntLiteral(Int)                           // 整数リテラル
+  CharLiteral(Char)                         // 文字リテラル
+  StringLiteral(String)                     // 文字列リテラル
+  Ident(String)                             // 識別子
+  BinaryOp(BinOp, Expr, Expr)              // 二項演算: op, lhs, rhs
+  UnaryOp(UnaryOp, Expr)                   // 単項演算: op, operand
+  Call(String, Array[Expr])                 // 関数呼び出し: name, args
+  Assign(Expr, Expr)                       // 代入: lhs, rhs
+  MemberAccess(Expr, String)               // メンバアクセス: base.field
+  SizeOf(String)                           // sizeof(型名): 型名文字列
+  InitList(Array[Expr])                    // 初期化リスト: {expr, expr, ...}
 } derive(Show, Eq)
 
-/// 文
-pub(all) enum Stmt {
+/// 式: 位置情報付き
+pub(all) struct Expr {
+  kind : ExprKind
+  pos : @lexer.Pos
+}
+
+/// Expr の Show は kind のみ表示（テスト互換性のため pos は省略）
+pub impl Show for Expr with output(self, logger) {
+  Show::output(self.kind, logger)
+}
+
+/// Expr の Eq は kind のみ比較（pos は無視）
+pub impl Eq for Expr with equal(self, other) -> Bool {
+  self.kind == other.kind
+}
+
+/// テスト用: ダミー位置で Expr を作成する
+pub fn Expr::mk(kind : ExprKind) -> Expr {
+  { kind, pos: { line: 0, col: 0 } }
+}
+
+/// 文の種類
+pub(all) enum StmtKind {
   Return(Expr?)                        // return 文: 式（void 関数では None）
   VarDecl(String, String, Expr?)       // 変数宣言: 型名, 変数名, 初期値
   ExprStmt(Expr)                       // 式文
@@ -68,6 +89,27 @@ pub(all) enum Stmt {
   While(Expr, Stmt)                    // while 文: 条件, 本体
   For(Stmt?, Expr?, Expr?, Stmt)       // for 文: 初期化, 条件, 更新, 本体
 } derive(Show, Eq)
+
+/// 文: 位置情報付き
+pub(all) struct Stmt {
+  kind : StmtKind
+  pos : @lexer.Pos
+}
+
+/// Stmt の Show は kind のみ表示（テスト互換性のため pos は省略）
+pub impl Show for Stmt with output(self, logger) {
+  Show::output(self.kind, logger)
+}
+
+/// Stmt の Eq は kind のみ比較（pos は無視）
+pub impl Eq for Stmt with equal(self, other) -> Bool {
+  self.kind == other.kind
+}
+
+/// テスト用: ダミー位置で Stmt を作成する
+pub fn Stmt::mk(kind : StmtKind) -> Stmt {
+  { kind, pos: { line: 0, col: 0 } }
+}
 
 /// パラメータ: 型名と変数名のペア
 pub(all) struct Param {
@@ -146,3 +188,12 @@ pub(all) enum TypedTopLevel {
 pub(all) struct TypedProgram {
   top_levels : Array[TypedTopLevel]
 } derive(Show, Eq)
+
+/// 位置情報のフォーマット（{0,0} の場合は空文字列）
+pub fn format_pos(pos : @lexer.Pos) -> String {
+  if pos.line == 0 && pos.col == 0 {
+    ""
+  } else {
+    " at line " + pos.line.to_string() + ", col " + pos.col.to_string()
+  }
+}

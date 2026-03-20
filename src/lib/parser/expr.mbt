@@ -81,6 +81,12 @@ fn token_to_unaryop(token : @lexer.Token) -> @ast.UnaryOp? {
   }
 }
 
+/// 位置情報付き Expr を作成するヘルパー
+fn Parser::make_expr(self : Parser, kind : @ast.ExprKind, pos : @lexer.Pos) -> @ast.Expr {
+  let _ = self
+  { kind, pos }
+}
+
 /// 式をパースする（公開エントリポイント）
 pub fn Parser::parse_expr(self : Parser) -> Result[@ast.Expr, String] {
   self.parse_expr_bp(0)
@@ -95,33 +101,38 @@ fn Parser::parse_expr_bp(
   let mut lhs : @ast.Expr = match self.peek() {
     // 整数リテラル
     IntLit(n) => {
+      let pos = self.current_pos()
       self.advance() |> ignore
-      @ast.Expr::IntLiteral(n)
+      self.make_expr(@ast.ExprKind::IntLiteral(n), pos)
     }
     // 文字リテラル
     CharLit(c) => {
+      let pos = self.current_pos()
       self.advance() |> ignore
-      @ast.Expr::CharLiteral(c)
+      self.make_expr(@ast.ExprKind::CharLiteral(c), pos)
     }
     // 文字列リテラル
     StringLit(s) => {
+      let pos = self.current_pos()
       self.advance() |> ignore
-      @ast.Expr::StringLiteral(s)
+      self.make_expr(@ast.ExprKind::StringLiteral(s), pos)
     }
     // 識別子または関数呼び出し
     Ident(name) => {
+      let pos = self.current_pos()
       self.advance() |> ignore
       if self.check(@lexer.Token::LParen) {
-        match self.parse_call_args(name) {
+        match self.parse_call_args(name, pos) {
           Ok(expr) => expr
           Err(e) => return Err(e)
         }
       } else {
-        @ast.Expr::Ident(name)
+        self.make_expr(@ast.ExprKind::Ident(name), pos)
       }
     }
     // sizeof(型名)
     KwSizeof => {
+      let pos = self.current_pos()
       self.advance() |> ignore
       match self.expect(@lexer.Token::LParen) {
         Ok(_) => ()
@@ -135,7 +146,7 @@ fn Parser::parse_expr_bp(
         Ok(_) => ()
         Err(e) => return Err(e)
       }
-      @ast.Expr::SizeOf(type_name)
+      self.make_expr(@ast.ExprKind::SizeOf(type_name), pos)
     }
     // 括弧式: (expr)
     LParen => {
@@ -163,12 +174,13 @@ fn Parser::parse_expr_bp(
               )
             }
           }
+          let pos = self.current_pos()
           self.advance() |> ignore
           let operand = match self.parse_expr_bp(rbp) {
             Ok(e) => e
             Err(e) => return Err(e)
           }
-          @ast.Expr::UnaryOp(op, operand)
+          self.make_expr(@ast.ExprKind::UnaryOp(op, operand), pos)
         }
         None => {
           let pos = self.current_pos()
@@ -185,54 +197,57 @@ fn Parser::parse_expr_bp(
     // 後置 ++/-- の処理（結合力 25: 前置より高い）
     let postfix_bp = 25
     if op_token == @lexer.Token::Inc && postfix_bp >= min_bp {
+      let pos = self.current_pos()
       self.advance() |> ignore
-      lhs = @ast.Expr::UnaryOp(PostInc, lhs)
+      lhs = self.make_expr(@ast.ExprKind::UnaryOp(PostInc, lhs), pos)
       continue
     }
     if op_token == @lexer.Token::Dec && postfix_bp >= min_bp {
+      let pos = self.current_pos()
       self.advance() |> ignore
-      lhs = @ast.Expr::UnaryOp(PostDec, lhs)
+      lhs = self.make_expr(@ast.ExprKind::UnaryOp(PostDec, lhs), pos)
       continue
     }
     // メンバアクセス s.field（結合力 25: 後置演算子と同等）
     if op_token == @lexer.Token::Dot && postfix_bp >= min_bp {
+      let pos = self.current_pos()
       self.advance() |> ignore
       match self.peek() {
         Ident(field_name) => {
           self.advance() |> ignore
-          lhs = @ast.Expr::MemberAccess(lhs, field_name)
+          lhs = self.make_expr(@ast.ExprKind::MemberAccess(lhs, field_name), pos)
           continue
         }
         other => {
-          let pos = self.current_pos()
+          let pos2 = self.current_pos()
           return Err(
-            "expected field name after '.', got \{other} at line \{pos.line}, col \{pos.col}",
+            "expected field name after '.', got \{other} at line \{pos2.line}, col \{pos2.col}",
           )
         }
       }
     }
     // アロー演算 p->field → (*p).field へのデシュガー（結合力 25: 後置演算子と同等）
     if op_token == @lexer.Token::Arrow && postfix_bp >= min_bp {
+      let pos = self.current_pos()
       self.advance() |> ignore
       match self.peek() {
         Ident(field_name) => {
           self.advance() |> ignore
-          lhs = @ast.Expr::MemberAccess(
-            @ast.Expr::UnaryOp(Deref, lhs),
-            field_name,
-          )
+          let deref_expr = self.make_expr(@ast.ExprKind::UnaryOp(Deref, lhs), pos)
+          lhs = self.make_expr(@ast.ExprKind::MemberAccess(deref_expr, field_name), pos)
           continue
         }
         other => {
-          let pos = self.current_pos()
+          let pos2 = self.current_pos()
           return Err(
-            "expected field name after '->', got \{other} at line \{pos.line}, col \{pos.col}",
+            "expected field name after '->', got \{other} at line \{pos2.line}, col \{pos2.col}",
           )
         }
       }
     }
     // 配列添字 a[i] → *(a + i) へのデシュガー（結合力 25: 後置演算子と同等）
     if op_token == @lexer.Token::LBracket && postfix_bp >= min_bp {
+      let pos = self.current_pos()
       self.advance() |> ignore
       let index = match self.parse_expr() {
         Ok(e) => e
@@ -242,7 +257,8 @@ fn Parser::parse_expr_bp(
         Ok(_) => ()
         Err(e) => return Err(e)
       }
-      lhs = @ast.Expr::UnaryOp(Deref, @ast.Expr::BinaryOp(Add, lhs, index))
+      let add_expr = self.make_expr(@ast.ExprKind::BinaryOp(Add, lhs, index), pos)
+      lhs = self.make_expr(@ast.ExprKind::UnaryOp(Deref, add_expr), pos)
       continue
     }
     let should_continue = match infix_binding_power(op_token) {
@@ -255,6 +271,7 @@ fn Parser::parse_expr_bp(
     // ここに来たら中置演算子がある
     match infix_binding_power(op_token) {
       Some((_, rbp)) => {
+        let pos = self.current_pos()
         self.advance() |> ignore
         let rhs = match self.parse_expr_bp(rbp) {
           Ok(e) => e
@@ -262,12 +279,11 @@ fn Parser::parse_expr_bp(
         }
         // 代入演算子の場合は Assign ノード
         if op_token == @lexer.Token::Assign {
-          lhs = @ast.Expr::Assign(lhs, rhs)
+          lhs = self.make_expr(@ast.ExprKind::Assign(lhs, rhs), pos)
         } else {
           match token_to_binop(op_token) {
-            Some(binop) => lhs = @ast.Expr::BinaryOp(binop, lhs, rhs)
+            Some(binop) => lhs = self.make_expr(@ast.ExprKind::BinaryOp(binop, lhs, rhs), pos)
             None => {
-              let pos = self.current_pos()
               return Err(
                 "unexpected infix token \{op_token} at line \{pos.line}, col \{pos.col}",
               )
@@ -284,7 +300,8 @@ fn Parser::parse_expr_bp(
 /// 関数呼び出しの引数リストをパースする
 fn Parser::parse_call_args(
   self : Parser,
-  name : String
+  name : String,
+  pos : @lexer.Pos
 ) -> Result[@ast.Expr, String] {
   match self.expect(@lexer.Token::LParen) {
     Ok(_) => ()
@@ -310,5 +327,5 @@ fn Parser::parse_call_args(
     Ok(_) => ()
     Err(e) => return Err(e)
   }
-  Ok(@ast.Expr::Call(name, args))
+  Ok(self.make_expr(@ast.ExprKind::Call(name, args), pos))
 }

@@ -1,5 +1,8 @@
 /// Codegen のスナップショットテスト
 
+fn e(kind : @ast.ExprKind) -> @ast.Expr { @ast.Expr::mk(kind) }
+fn s(kind : @ast.StmtKind) -> @ast.Stmt { @ast.Stmt::mk(kind) }
+
 /// バイト列を16進数文字列に変換するヘルパー
 fn bytes_to_hex(bytes : Array[Byte]) -> String {
   let buf = StringBuilder::new(size_hint=bytes.length() * 3)
@@ -32,35 +35,35 @@ fn empty_ctx() -> CodegenContext {
 /// IntLiteral(42) → i32.const 42
 test "emit_expr: int literal 42" {
   let code : Array[Byte] = []
-  emit_expr(@ast.IntLiteral(42), code, empty_ctx())
+  emit_expr(e(IntLiteral(42)), code, empty_ctx())
   inspect(bytes_to_hex(code), content="41 2A")
 }
 
 /// IntLiteral(0) → i32.const 0
 test "emit_expr: int literal 0" {
   let code : Array[Byte] = []
-  emit_expr(@ast.IntLiteral(0), code, empty_ctx())
+  emit_expr(e(IntLiteral(0)), code, empty_ctx())
   inspect(bytes_to_hex(code), content="41 00")
 }
 
 /// IntLiteral(-1) → i32.const -1 (sleb128: 0x7F)
 test "emit_expr: int literal -1" {
   let code : Array[Byte] = []
-  emit_expr(@ast.IntLiteral(-1), code, empty_ctx())
+  emit_expr(e(IntLiteral(-1)), code, empty_ctx())
   inspect(bytes_to_hex(code), content="41 7F")
 }
 
 /// IntLiteral(128) → i32.const 128 (sleb128: 0x80 0x01)
 test "emit_expr: int literal 128" {
   let code : Array[Byte] = []
-  emit_expr(@ast.IntLiteral(128), code, empty_ctx())
+  emit_expr(e(IntLiteral(128)), code, empty_ctx())
   inspect(bytes_to_hex(code), content="41 80 01")
 }
 
 /// CharLiteral('A') → i32.const 65
 test "emit_expr: char literal A" {
   let code : Array[Byte] = []
-  emit_expr(@ast.CharLiteral('A'), code, empty_ctx())
+  emit_expr(e(CharLiteral('A')), code, empty_ctx())
   inspect(bytes_to_hex(code), content="41 C1 00")
 }
 
@@ -68,7 +71,7 @@ test "emit_expr: char literal A" {
 test "emit_expr: add 3 + 4" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(Add, @ast.IntLiteral(3), @ast.IntLiteral(4)),
+    e(BinaryOp(Add, e(IntLiteral(3)), e(IntLiteral(4)))),
     code,
     empty_ctx(),
   )
@@ -79,7 +82,7 @@ test "emit_expr: add 3 + 4" {
 test "emit_expr: sub 10 - 3" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(Sub, @ast.IntLiteral(10), @ast.IntLiteral(3)),
+    e(BinaryOp(Sub, e(IntLiteral(10)), e(IntLiteral(3)))),
     code,
     empty_ctx(),
   )
@@ -90,7 +93,7 @@ test "emit_expr: sub 10 - 3" {
 test "emit_expr: mul 6 * 7" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(Mul, @ast.IntLiteral(6), @ast.IntLiteral(7)),
+    e(BinaryOp(Mul, e(IntLiteral(6)), e(IntLiteral(7)))),
     code,
     empty_ctx(),
   )
@@ -101,7 +104,7 @@ test "emit_expr: mul 6 * 7" {
 test "emit_expr: div 20 / 4" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(Div, @ast.IntLiteral(20), @ast.IntLiteral(4)),
+    e(BinaryOp(Div, e(IntLiteral(20)), e(IntLiteral(4)))),
     code,
     empty_ctx(),
   )
@@ -112,7 +115,7 @@ test "emit_expr: div 20 / 4" {
 test "emit_expr: mod 17 % 5" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(Mod, @ast.IntLiteral(17), @ast.IntLiteral(5)),
+    e(BinaryOp(Mod, e(IntLiteral(17)), e(IntLiteral(5)))),
     code,
     empty_ctx(),
   )
@@ -123,11 +126,11 @@ test "emit_expr: mod 17 % 5" {
 test "emit_expr: nested 3 + (4 * 5)" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(
+    e(BinaryOp(
       Add,
-      @ast.IntLiteral(3),
-      @ast.BinaryOp(Mul, @ast.IntLiteral(4), @ast.IntLiteral(5)),
-    ),
+      e(IntLiteral(3)),
+      e(BinaryOp(Mul, e(IntLiteral(4)), e(IntLiteral(5)))),
+    )),
     code,
     empty_ctx(),
   )
@@ -138,7 +141,7 @@ test "emit_expr: nested 3 + (4 * 5)" {
 test "emit_expr: eq 3 == 4" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(Eq, @ast.IntLiteral(3), @ast.IntLiteral(4)),
+    e(BinaryOp(Eq, e(IntLiteral(3)), e(IntLiteral(4)))),
     code,
     empty_ctx(),
   )
@@ -149,7 +152,7 @@ test "emit_expr: eq 3 == 4" {
 test "emit_expr: lt 5 < 10" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(Lt, @ast.IntLiteral(5), @ast.IntLiteral(10)),
+    e(BinaryOp(Lt, e(IntLiteral(5)), e(IntLiteral(10)))),
     code,
     empty_ctx(),
   )
@@ -160,7 +163,7 @@ test "emit_expr: lt 5 < 10" {
 test "emit_expr: bitand" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(BitAnd, @ast.IntLiteral(255), @ast.IntLiteral(15)),
+    e(BinaryOp(BitAnd, e(IntLiteral(255)), e(IntLiteral(15)))),
     code,
     empty_ctx(),
   )
@@ -171,7 +174,7 @@ test "emit_expr: bitand" {
 test "emit_expr: bitor" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(BitOr, @ast.IntLiteral(255), @ast.IntLiteral(15)),
+    e(BinaryOp(BitOr, e(IntLiteral(255)), e(IntLiteral(15)))),
     code,
     empty_ctx(),
   )
@@ -182,7 +185,7 @@ test "emit_expr: bitor" {
 test "emit_expr: bitxor" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(BitXor, @ast.IntLiteral(255), @ast.IntLiteral(15)),
+    e(BinaryOp(BitXor, e(IntLiteral(255)), e(IntLiteral(15)))),
     code,
     empty_ctx(),
   )
@@ -193,7 +196,7 @@ test "emit_expr: bitxor" {
 test "emit_expr: shl" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(Shl, @ast.IntLiteral(1), @ast.IntLiteral(3)),
+    e(BinaryOp(Shl, e(IntLiteral(1)), e(IntLiteral(3)))),
     code,
     empty_ctx(),
   )
@@ -204,7 +207,7 @@ test "emit_expr: shl" {
 test "emit_expr: shr" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(Shr, @ast.IntLiteral(16), @ast.IntLiteral(2)),
+    e(BinaryOp(Shr, e(IntLiteral(16)), e(IntLiteral(2)))),
     code,
     empty_ctx(),
   )
@@ -214,21 +217,21 @@ test "emit_expr: shr" {
 /// 単項演算: -42 → i32.const 0; i32.const 42; i32.sub
 test "emit_expr: unary neg" {
   let code : Array[Byte] = []
-  emit_expr(@ast.UnaryOp(Neg, @ast.IntLiteral(42)), code, empty_ctx())
+  emit_expr(e(UnaryOp(Neg, e(IntLiteral(42)))), code, empty_ctx())
   inspect(bytes_to_hex(code), content="41 00 41 2A 6B")
 }
 
 /// 単項演算: !1 → i32.const 1; i32.eqz
 test "emit_expr: unary lognot" {
   let code : Array[Byte] = []
-  emit_expr(@ast.UnaryOp(LogNot, @ast.IntLiteral(1)), code, empty_ctx())
+  emit_expr(e(UnaryOp(LogNot, e(IntLiteral(1)))), code, empty_ctx())
   inspect(bytes_to_hex(code), content="41 01 45")
 }
 
 /// 単項演算: ~0 → i32.const 0; i32.const -1; i32.xor
 test "emit_expr: unary bitnot" {
   let code : Array[Byte] = []
-  emit_expr(@ast.UnaryOp(BitNot, @ast.IntLiteral(0)), code, empty_ctx())
+  emit_expr(e(UnaryOp(BitNot, e(IntLiteral(0)))), code, empty_ctx())
   inspect(bytes_to_hex(code), content="41 00 41 7F 73")
 }
 
@@ -260,7 +263,7 @@ test "emit_expr: ident local.get param" {
     [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
   )
   let code : Array[Byte] = []
-  emit_expr(@ast.Ident("a"), code, ctx)
+  emit_expr(e(Ident("a")), code, ctx)
   // local.get 0 → 0x20 0x00
   inspect(bytes_to_hex(code), content="20 00")
 }
@@ -271,7 +274,7 @@ test "emit_expr: ident local.get second param" {
     [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
   )
   let code : Array[Byte] = []
-  emit_expr(@ast.Ident("b"), code, ctx)
+  emit_expr(e(Ident("b")), code, ctx)
   // local.get 1 → 0x20 0x01
   inspect(bytes_to_hex(code), content="20 01")
 }
@@ -283,7 +286,7 @@ test "emit_expr: ident local.get local var" {
   )
   let _ = ctx.add_local("x")
   let code : Array[Byte] = []
-  emit_expr(@ast.Ident("x"), code, ctx)
+  emit_expr(e(Ident("x")), code, ctx)
   // local.get 1 → 0x20 0x01
   inspect(bytes_to_hex(code), content="20 01")
 }
@@ -295,7 +298,7 @@ test "emit_expr: binary op with locals" {
   )
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(Add, @ast.Ident("a"), @ast.Ident("b")),
+    e(BinaryOp(Add, e(Ident("a")), e(Ident("b")))),
     code,
     ctx,
   )
@@ -308,7 +311,7 @@ test "emit_expr: undefined variable error" {
   let ctx = CodegenContext::new()
   let code : Array[Byte] = []
   let result : Result[Unit, Error] = try {
-    Ok(emit_expr(@ast.Ident("unknown"), code, ctx))
+    Ok(emit_expr(e(Ident("unknown")), code, ctx))
   } catch {
     e => Err(e)
   }
@@ -325,7 +328,7 @@ test "emit_expr: call no args" {
   let functions : Map[String, Int] = { "foo": 0 }
   let ctx = CodegenContext::from_params([], functions~)
   let code : Array[Byte] = []
-  emit_expr(@ast.Call("foo", []), code, ctx)
+  emit_expr(e(Call("foo", [])), code, ctx)
   // call 0 → 0x10 0x00
   inspect(bytes_to_hex(code), content="10 00")
 }
@@ -339,7 +342,7 @@ test "emit_expr: call with args" {
   )
   let code : Array[Byte] = []
   emit_expr(
-    @ast.Call("add", [@ast.IntLiteral(3), @ast.IntLiteral(4)]),
+    e(Call("add", [e(IntLiteral(3)), e(IntLiteral(4))])),
     code,
     ctx,
   )
@@ -352,7 +355,7 @@ test "emit_expr: call function index 1" {
   let functions : Map[String, Int] = { "foo": 0, "bar": 1 }
   let ctx = CodegenContext::from_params([], functions~)
   let code : Array[Byte] = []
-  emit_expr(@ast.Call("bar", [@ast.IntLiteral(42)]), code, ctx)
+  emit_expr(e(Call("bar", [e(IntLiteral(42))])), code, ctx)
   // i32.const 42; call 1
   inspect(bytes_to_hex(code), content="41 2A 10 01")
 }
@@ -366,7 +369,7 @@ test "emit_expr: call with local args" {
   )
   let code : Array[Byte] = []
   emit_expr(
-    @ast.Call("add", [@ast.Ident("a"), @ast.Ident("b")]),
+    e(Call("add", [e(Ident("a")), e(Ident("b"))])),
     code,
     ctx,
   )
@@ -380,13 +383,13 @@ test "emit_expr: call with expr args" {
   let ctx = CodegenContext::from_params([], functions~)
   let code : Array[Byte] = []
   emit_expr(
-    @ast.Call(
+    e(Call(
       "add",
       [
-        @ast.BinaryOp(Add, @ast.IntLiteral(1), @ast.IntLiteral(2)),
-        @ast.IntLiteral(3),
+        e(BinaryOp(Add, e(IntLiteral(1)), e(IntLiteral(2)))),
+        e(IntLiteral(3)),
       ],
-    ),
+    )),
     code,
     ctx,
   )
@@ -399,7 +402,7 @@ test "emit_expr: undefined function error" {
   let ctx = CodegenContext::new()
   let code : Array[Byte] = []
   let result : Result[Unit, Error] = try {
-    Ok(emit_expr(@ast.Call("unknown", []), code, ctx))
+    Ok(emit_expr(e(Call("unknown", [])), code, ctx))
   } catch {
     e => Err(e)
   }
@@ -414,7 +417,7 @@ test "emit_expr: call large function index" {
   let functions : Map[String, Int] = { "big": 128 }
   let ctx = CodegenContext::from_params([], functions~)
   let code : Array[Byte] = []
-  emit_expr(@ast.Call("big", []), code, ctx)
+  emit_expr(e(Call("big", [])), code, ctx)
   // call 128 → 0x10 0x80 0x01
   inspect(bytes_to_hex(code), content="10 80 01")
 }
@@ -440,7 +443,7 @@ test "emit_local_set: index 128" {
 /// return 42; → i32.const 42; return
 test "emit_stmt: return int literal" {
   let code : Array[Byte] = []
-  emit_stmt(@ast.Return(Some(@ast.IntLiteral(42))), code, empty_ctx())
+  emit_stmt(s(Return(Some(e(IntLiteral(42))))), code, empty_ctx())
   // i32.const 42; return → 0x41 0x2A 0x0F
   inspect(bytes_to_hex(code), content="41 2A 0F")
 }
@@ -448,7 +451,7 @@ test "emit_stmt: return int literal" {
 /// return; → return（void 関数の return）
 test "emit_stmt: return void" {
   let code : Array[Byte] = []
-  emit_stmt(@ast.Return(None), code, empty_ctx())
+  emit_stmt(s(Return(None)), code, empty_ctx())
   // return → 0x0F
   inspect(bytes_to_hex(code), content="0F")
 }
@@ -460,7 +463,7 @@ test "emit_stmt: return with binary op" {
   )
   let code : Array[Byte] = []
   emit_stmt(
-    @ast.Return(Some(@ast.BinaryOp(Add, @ast.Ident("a"), @ast.Ident("b")))),
+    s(Return(Some(e(BinaryOp(Add, e(Ident("a")), e(Ident("b"))))))),
     code,
     ctx,
   )
@@ -474,7 +477,7 @@ test "emit_stmt: return with call" {
   let ctx = CodegenContext::from_params([], functions~)
   let code : Array[Byte] = []
   emit_stmt(
-    @ast.Return(Some(@ast.Call("add", [@ast.IntLiteral(3), @ast.IntLiteral(4)]))),
+    s(Return(Some(e(Call("add", [e(IntLiteral(3)), e(IntLiteral(4))]))))),
     code,
     ctx,
   )
@@ -489,7 +492,7 @@ test "emit_stmt: return with unary neg" {
   )
   let code : Array[Byte] = []
   emit_stmt(
-    @ast.Return(Some(@ast.UnaryOp(Neg, @ast.Ident("x")))),
+    s(Return(Some(e(UnaryOp(Neg, e(Ident("x"))))))),
     code,
     ctx,
   )
@@ -503,7 +506,7 @@ test "emit_stmt: return with unary neg" {
 test "emit_stmt: var decl with init" {
   let ctx = CodegenContext::new()
   let code : Array[Byte] = []
-  emit_stmt(@ast.VarDecl("int", "x", Some(@ast.IntLiteral(42))), code, ctx)
+  emit_stmt(s(VarDecl("int", "x", Some(e(IntLiteral(42))))), code, ctx)
   // i32.const 42; local.set 0
   inspect(bytes_to_hex(code), content="41 2A 21 00")
   // x が local index 0 に登録されている
@@ -514,7 +517,7 @@ test "emit_stmt: var decl with init" {
 test "emit_stmt: var decl without init" {
   let ctx = CodegenContext::new()
   let code : Array[Byte] = []
-  emit_stmt(@ast.VarDecl("int", "x", None), code, ctx)
+  emit_stmt(s(VarDecl("int", "x", None)), code, ctx)
   // 命令は生成されない
   inspect(bytes_to_hex(code), content="")
   // x が local index 0 に登録されている
@@ -525,8 +528,8 @@ test "emit_stmt: var decl without init" {
 test "emit_stmt: multiple var decls" {
   let ctx = CodegenContext::new()
   let code : Array[Byte] = []
-  emit_stmt(@ast.VarDecl("int", "x", Some(@ast.IntLiteral(10))), code, ctx)
-  emit_stmt(@ast.VarDecl("int", "y", Some(@ast.IntLiteral(20))), code, ctx)
+  emit_stmt(s(VarDecl("int", "x", Some(e(IntLiteral(10))))), code, ctx)
+  emit_stmt(s(VarDecl("int", "y", Some(e(IntLiteral(20))))), code, ctx)
   // i32.const 10; local.set 0; i32.const 20; local.set 1
   inspect(bytes_to_hex(code), content="41 0A 21 00 41 14 21 01")
   inspect(ctx.resolve("x"), content="Some(0)")
@@ -540,11 +543,11 @@ test "emit_stmt: var decl with params" {
   )
   let code : Array[Byte] = []
   emit_stmt(
-    @ast.VarDecl(
+    s(VarDecl(
       "int",
       "sum",
-      Some(@ast.BinaryOp(Add, @ast.Ident("a"), @ast.Ident("b"))),
-    ),
+      Some(e(BinaryOp(Add, e(Ident("a")), e(Ident("b"))))),
+    )),
     code,
     ctx,
   )
@@ -558,7 +561,7 @@ test "emit_expr: assign" {
   let ctx = CodegenContext::new()
   let _ = ctx.add_local("x")
   let code : Array[Byte] = []
-  emit_expr(@ast.Assign(@ast.Ident("x"), @ast.IntLiteral(5)), code, ctx)
+  emit_expr(e(Assign(e(Ident("x")), e(IntLiteral(5)))), code, ctx)
   // i32.const 5; local.tee 0
   inspect(bytes_to_hex(code), content="41 05 22 00")
 }
@@ -568,7 +571,7 @@ test "emit_expr: assign undefined variable error" {
   let ctx = CodegenContext::new()
   let code : Array[Byte] = []
   let result : Result[Unit, Error] = try {
-    Ok(emit_expr(@ast.Assign(@ast.Ident("x"), @ast.IntLiteral(5)), code, ctx))
+    Ok(emit_expr(e(Assign(e(Ident("x")), e(IntLiteral(5)))), code, ctx))
   } catch {
     e => Err(e)
   }
@@ -581,7 +584,7 @@ test "emit_stmt: expr stmt" {
   let _ = ctx.add_local("x")
   let code : Array[Byte] = []
   emit_stmt(
-    @ast.ExprStmt(@ast.Assign(@ast.Ident("x"), @ast.IntLiteral(5))),
+    s(ExprStmt(e(Assign(e(Ident("x")), e(IntLiteral(5)))))),
     code,
     ctx,
   )
@@ -594,15 +597,15 @@ test "emit_stmt: block" {
   let ctx = CodegenContext::new()
   let code : Array[Byte] = []
   emit_stmt(
-    @ast.Block(
+    s(Block(
       [
-        @ast.VarDecl("int", "x", Some(@ast.IntLiteral(10))),
-        @ast.VarDecl("int", "y", Some(@ast.IntLiteral(20))),
-        @ast.Return(
-          Some(@ast.BinaryOp(Add, @ast.Ident("x"), @ast.Ident("y"))),
-        ),
+        s(VarDecl("int", "x", Some(e(IntLiteral(10))))),
+        s(VarDecl("int", "y", Some(e(IntLiteral(20))))),
+        s(Return(
+          Some(e(BinaryOp(Add, e(Ident("x")), e(Ident("y"))))),
+        )),
       ],
-    ),
+    )),
     code,
     ctx,
   )
@@ -617,10 +620,10 @@ test "emit_stmt: block" {
 test "emit_stmt: var decl and return" {
   let ctx = CodegenContext::new()
   let code : Array[Byte] = []
-  emit_stmt(@ast.VarDecl("int", "x", Some(@ast.IntLiteral(10))), code, ctx)
-  emit_stmt(@ast.VarDecl("int", "y", Some(@ast.IntLiteral(20))), code, ctx)
+  emit_stmt(s(VarDecl("int", "x", Some(e(IntLiteral(10))))), code, ctx)
+  emit_stmt(s(VarDecl("int", "y", Some(e(IntLiteral(20))))), code, ctx)
   emit_stmt(
-    @ast.Return(Some(@ast.BinaryOp(Add, @ast.Ident("x"), @ast.Ident("y")))),
+    s(Return(Some(e(BinaryOp(Add, e(Ident("x")), e(Ident("y"))))))),
     code,
     ctx,
   )
@@ -641,7 +644,7 @@ test "compile_program: single function return 42" {
         "int",
         "main",
         [],
-        @ast.Block([@ast.Return(Some(@ast.IntLiteral(42)))]),
+        s(Block([s(Return(Some(e(IntLiteral(42)))))])),
       ),
     ],
   }
@@ -660,27 +663,27 @@ test "compile_program: multiple functions" {
         "int",
         "add",
         [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
-        @ast.Block(
+        s(Block(
           [
-            @ast.Return(
-              Some(@ast.BinaryOp(Add, @ast.Ident("a"), @ast.Ident("b"))),
-            ),
+            s(Return(
+              Some(e(BinaryOp(Add, e(Ident("a")), e(Ident("b"))))),
+            )),
           ],
-        ),
+        )),
       ),
       @ast.FuncDef(
         "int",
         "main",
         [],
-        @ast.Block(
+        s(Block(
           [
-            @ast.Return(
+            s(Return(
               Some(
-                @ast.Call("add", [@ast.IntLiteral(3), @ast.IntLiteral(4)]),
+                e(Call("add", [e(IntLiteral(3)), e(IntLiteral(4))])),
               ),
-            ),
+            )),
           ],
-        ),
+        )),
       ),
     ],
   }
@@ -699,13 +702,13 @@ test "compile_program: void function" {
         "void",
         "noop",
         [],
-        @ast.Block([@ast.Return(None)]),
+        s(Block([s(Return(None))])),
       ),
       @ast.FuncDef(
         "int",
         "main",
         [],
-        @ast.Block([@ast.Return(Some(@ast.IntLiteral(0)))]),
+        s(Block([s(Return(Some(e(IntLiteral(0)))))])),
       ),
     ],
   }
@@ -733,11 +736,11 @@ test "emit_stmt: if without else" {
   )
   let code : Array[Byte] = []
   emit_stmt(
-    @ast.If(
-      @ast.BinaryOp(Lt, @ast.Ident("x"), @ast.IntLiteral(0)),
-      @ast.Return(Some(@ast.UnaryOp(Neg, @ast.Ident("x")))),
+    s(If(
+      e(BinaryOp(Lt, e(Ident("x")), e(IntLiteral(0)))),
+      s(Return(Some(e(UnaryOp(Neg, e(Ident("x"))))))),
       None,
-    ),
+    )),
     code,
     ctx,
   )
@@ -755,11 +758,11 @@ test "emit_stmt: if with else" {
   )
   let code : Array[Byte] = []
   emit_stmt(
-    @ast.If(
-      @ast.Ident("x"),
-      @ast.Return(Some(@ast.IntLiteral(1))),
-      Some(@ast.Return(Some(@ast.IntLiteral(0)))),
-    ),
+    s(If(
+      e(Ident("x")),
+      s(Return(Some(e(IntLiteral(1))))),
+      Some(s(Return(Some(e(IntLiteral(0)))))),
+    )),
     code,
     ctx,
   )
@@ -778,27 +781,27 @@ test "compile_program: function with if/else" {
         "int",
         "abs_val",
         [{ type_name: "int", name: "x" }],
-        @ast.Block(
+        s(Block(
           [
-            @ast.If(
-              @ast.BinaryOp(Lt, @ast.Ident("x"), @ast.IntLiteral(0)),
-              @ast.Return(Some(@ast.UnaryOp(Neg, @ast.Ident("x")))),
-              Some(@ast.Return(Some(@ast.Ident("x")))),
-            ),
+            s(If(
+              e(BinaryOp(Lt, e(Ident("x")), e(IntLiteral(0)))),
+              s(Return(Some(e(UnaryOp(Neg, e(Ident("x"))))))),
+              Some(s(Return(Some(e(Ident("x")))))),
+            )),
           ],
-        ),
+        )),
       ),
       @ast.FuncDef(
         "int",
         "main",
         [],
-        @ast.Block(
+        s(Block(
           [
-            @ast.Return(
-              Some(@ast.Call("abs_val", [@ast.IntLiteral(-5)])),
-            ),
+            s(Return(
+              Some(e(Call("abs_val", [e(IntLiteral(-5))]))),
+            )),
           ],
-        ),
+        )),
       ),
     ],
   }
@@ -816,16 +819,16 @@ test "emit_stmt: while loop" {
   )
   let code : Array[Byte] = []
   emit_stmt(
-    @ast.While(
-      @ast.BinaryOp(Gt, @ast.Ident("x"), @ast.IntLiteral(0)),
-      @ast.Block(
+    s(While(
+      e(BinaryOp(Gt, e(Ident("x")), e(IntLiteral(0)))),
+      s(Block(
         [
-          @ast.ExprStmt(
-            @ast.Assign(@ast.Ident("x"), @ast.BinaryOp(Sub, @ast.Ident("x"), @ast.IntLiteral(1))),
-          ),
+          s(ExprStmt(
+            e(Assign(e(Ident("x")), e(BinaryOp(Sub, e(Ident("x")), e(IntLiteral(1)))))),
+          )),
         ],
-      ),
-    ),
+      )),
+    )),
     code,
     ctx,
   )
@@ -845,43 +848,43 @@ test "compile_program: function with while loop (factorial)" {
         "int",
         "fact",
         [{ type_name: "int", name: "n" }],
-        @ast.Block(
+        s(Block(
           [
-            @ast.VarDecl("int", "result", Some(@ast.IntLiteral(1))),
-            @ast.While(
-              @ast.BinaryOp(Gt, @ast.Ident("n"), @ast.IntLiteral(0)),
-              @ast.Block(
+            s(VarDecl("int", "result", Some(e(IntLiteral(1))))),
+            s(While(
+              e(BinaryOp(Gt, e(Ident("n")), e(IntLiteral(0)))),
+              s(Block(
                 [
-                  @ast.ExprStmt(
-                    @ast.Assign(
-                      @ast.Ident("result"),
-                      @ast.BinaryOp(Mul, @ast.Ident("result"), @ast.Ident("n")),
-                    ),
-                  ),
-                  @ast.ExprStmt(
-                    @ast.Assign(
-                      @ast.Ident("n"),
-                      @ast.BinaryOp(Sub, @ast.Ident("n"), @ast.IntLiteral(1)),
-                    ),
-                  ),
+                  s(ExprStmt(
+                    e(Assign(
+                      e(Ident("result")),
+                      e(BinaryOp(Mul, e(Ident("result")), e(Ident("n")))),
+                    )),
+                  )),
+                  s(ExprStmt(
+                    e(Assign(
+                      e(Ident("n")),
+                      e(BinaryOp(Sub, e(Ident("n")), e(IntLiteral(1)))),
+                    )),
+                  )),
                 ],
-              ),
-            ),
-            @ast.Return(Some(@ast.Ident("result"))),
+              )),
+            )),
+            s(Return(Some(e(Ident("result"))))),
           ],
-        ),
+        )),
       ),
       @ast.FuncDef(
         "int",
         "main",
         [],
-        @ast.Block(
+        s(Block(
           [
-            @ast.Return(
-              Some(@ast.Call("fact", [@ast.IntLiteral(5)])),
-            ),
+            s(Return(
+              Some(e(Call("fact", [e(IntLiteral(5))]))),
+            )),
           ],
-        ),
+        )),
       ),
     ],
   }
@@ -897,7 +900,7 @@ test "compile_program: function with while loop (factorial)" {
 test "emit_expr: logical and short-circuit" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(LogAnd, @ast.IntLiteral(1), @ast.IntLiteral(2)),
+    e(BinaryOp(LogAnd, e(IntLiteral(1)), e(IntLiteral(2)))),
     code,
     empty_ctx(),
   )
@@ -910,7 +913,7 @@ test "emit_expr: logical and short-circuit" {
 test "emit_expr: logical or short-circuit" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(LogOr, @ast.IntLiteral(0), @ast.IntLiteral(3)),
+    e(BinaryOp(LogOr, e(IntLiteral(0)), e(IntLiteral(3)))),
     code,
     empty_ctx(),
   )
@@ -925,7 +928,7 @@ test "emit_expr: logical and with idents" {
   )
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(LogAnd, @ast.Ident("a"), @ast.Ident("b")),
+    e(BinaryOp(LogAnd, e(Ident("a")), e(Ident("b")))),
     code,
     ctx,
   )
@@ -940,7 +943,7 @@ test "emit_expr: logical or with idents" {
   )
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(LogOr, @ast.Ident("a"), @ast.Ident("b")),
+    e(BinaryOp(LogOr, e(Ident("a")), e(Ident("b")))),
     code,
     ctx,
   )
@@ -959,11 +962,11 @@ test "emit_expr: nested logical and-or" {
   )
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(
+    e(BinaryOp(
       LogOr,
-      @ast.BinaryOp(LogAnd, @ast.Ident("a"), @ast.Ident("b")),
-      @ast.Ident("c"),
-    ),
+      e(BinaryOp(LogAnd, e(Ident("a")), e(Ident("b")))),
+      e(Ident("c")),
+    )),
     code,
     ctx,
   )
@@ -983,15 +986,15 @@ test "compile_program: function with locals" {
         "int",
         "main",
         [],
-        @ast.Block(
+        s(Block(
           [
-            @ast.VarDecl("int", "x", Some(@ast.IntLiteral(10))),
-            @ast.VarDecl("int", "y", Some(@ast.IntLiteral(20))),
-            @ast.Return(
-              Some(@ast.BinaryOp(Add, @ast.Ident("x"), @ast.Ident("y"))),
-            ),
+            s(VarDecl("int", "x", Some(e(IntLiteral(10))))),
+            s(VarDecl("int", "y", Some(e(IntLiteral(20))))),
+            s(Return(
+              Some(e(BinaryOp(Add, e(Ident("x")), e(Ident("y"))))),
+            )),
           ],
-        ),
+        )),
       ),
     ],
   }
@@ -1008,7 +1011,7 @@ test "emit_expr: prefix increment" {
     [{ type_name: "int", name: "x" }],
   )
   let code : Array[Byte] = []
-  emit_expr(@ast.UnaryOp(PreInc, @ast.Ident("x")), code, ctx)
+  emit_expr(e(UnaryOp(PreInc, e(Ident("x")))), code, ctx)
   // local.get 0 (20 00); i32.const 1 (41 01); i32.add (6A); local.tee 0 (22 00)
   inspect(bytes_to_hex(code), content="20 00 41 01 6A 22 00")
 }
@@ -1019,7 +1022,7 @@ test "emit_expr: prefix decrement" {
     [{ type_name: "int", name: "x" }],
   )
   let code : Array[Byte] = []
-  emit_expr(@ast.UnaryOp(PreDec, @ast.Ident("x")), code, ctx)
+  emit_expr(e(UnaryOp(PreDec, e(Ident("x")))), code, ctx)
   // local.get 0 (20 00); i32.const 1 (41 01); i32.sub (6B); local.tee 0 (22 00)
   inspect(bytes_to_hex(code), content="20 00 41 01 6B 22 00")
 }
@@ -1030,7 +1033,7 @@ test "emit_expr: postfix increment" {
     [{ type_name: "int", name: "x" }],
   )
   let code : Array[Byte] = []
-  emit_expr(@ast.UnaryOp(PostInc, @ast.Ident("x")), code, ctx)
+  emit_expr(e(UnaryOp(PostInc, e(Ident("x")))), code, ctx)
   // local.get 0 (20 00); local.get 0 (20 00); i32.const 1 (41 01); i32.add (6A); local.set 0 (21 00)
   inspect(bytes_to_hex(code), content="20 00 20 00 41 01 6A 21 00")
 }
@@ -1041,7 +1044,7 @@ test "emit_expr: postfix decrement" {
     [{ type_name: "int", name: "x" }],
   )
   let code : Array[Byte] = []
-  emit_expr(@ast.UnaryOp(PostDec, @ast.Ident("x")), code, ctx)
+  emit_expr(e(UnaryOp(PostDec, e(Ident("x")))), code, ctx)
   // local.get 0 (20 00); local.get 0 (20 00); i32.const 1 (41 01); i32.sub (6B); local.set 0 (21 00)
   inspect(bytes_to_hex(code), content="20 00 20 00 41 01 6B 21 00")
 }
@@ -1051,7 +1054,7 @@ test "emit_expr: prefix increment undefined var error" {
   let ctx = CodegenContext::new()
   let code : Array[Byte] = []
   let result : Result[Unit, Error] = try {
-    Ok(emit_expr(@ast.UnaryOp(PreInc, @ast.Ident("x")), code, ctx))
+    Ok(emit_expr(e(UnaryOp(PreInc, e(Ident("x")))), code, ctx))
   } catch {
     e => Err(e)
   }
@@ -1063,7 +1066,7 @@ test "emit_expr: prefix increment non-ident error" {
   let ctx = CodegenContext::new()
   let code : Array[Byte] = []
   let result : Result[Unit, Error] = try {
-    Ok(emit_expr(@ast.UnaryOp(PreInc, @ast.IntLiteral(1)), code, ctx))
+    Ok(emit_expr(e(UnaryOp(PreInc, e(IntLiteral(1)))), code, ctx))
   } catch {
     e => Err(e)
   }
@@ -1144,7 +1147,7 @@ test "allocate_on_stack: multiple allocations" {
 test "emit_stmt: return with frame_size 0 no epilogue" {
   let ctx = CodegenContext::new()
   let code : Array[Byte] = []
-  emit_stmt(@ast.Return(Some(@ast.IntLiteral(42))), code, ctx)
+  emit_stmt(s(Return(Some(e(IntLiteral(42))))), code, ctx)
   // i32.const 42 (41 2A) + return (0F) — エピローグなし
   inspect(bytes_to_hex(code), content="41 2A 0F")
 }
@@ -1156,7 +1159,7 @@ test "emit_stmt: return with frame_size 8 has epilogue" {
   let _ = ctx.allocate_on_stack(4) // frame_size = 4
   let _ = ctx.allocate_on_stack(4) // frame_size = 8
   let code : Array[Byte] = []
-  emit_stmt(@ast.Return(Some(@ast.IntLiteral(42))), code, ctx)
+  emit_stmt(s(Return(Some(e(IntLiteral(42))))), code, ctx)
   // i32.const 42 (41 2A) + epilogue (23 00 41 08 6A 24 00) + return (0F)
   inspect(
     bytes_to_hex(code),
@@ -1169,7 +1172,7 @@ test "emit_stmt: void return with frame_size 4 has epilogue" {
   let ctx = CodegenContext::new()
   let _ = ctx.allocate_on_stack(4) // frame_size = 4
   let code : Array[Byte] = []
-  emit_stmt(@ast.Return(None), code, ctx)
+  emit_stmt(s(Return(None)), code, ctx)
   // epilogue (23 00 41 04 6A 24 00) + return (0F)
   inspect(bytes_to_hex(code), content="23 00 41 04 6A 24 00 0F")
 }
@@ -1183,7 +1186,7 @@ test "compile_program: no prologue when no stack vars" {
         "int",
         "main",
         [],
-        @ast.Stmt::Block([@ast.Return(Some(@ast.IntLiteral(42)))]),
+        s(Block([s(Return(Some(e(IntLiteral(42)))))])),
       ),
     ],
   }
@@ -1195,11 +1198,11 @@ test "compile_program: no prologue when no stack vars" {
 /// collect_addr_taken_vars: &x を検出する
 test "collect_addr_taken_vars: detects address-of" {
   // int x = 42; int *p = &x; return *p;
-  let body = @ast.Stmt::Block([
-    @ast.VarDecl("int", "x", Some(@ast.IntLiteral(42))),
-    @ast.VarDecl("int*", "p", Some(@ast.UnaryOp(AddrOf, @ast.Ident("x")))),
-    @ast.Return(Some(@ast.UnaryOp(Deref, @ast.Ident("p")))),
-  ])
+  let body = s(Block([
+    s(VarDecl("int", "x", Some(e(IntLiteral(42))))),
+    s(VarDecl("int*", "p", Some(e(UnaryOp(AddrOf, e(Ident("x"))))))),
+    s(Return(Some(e(UnaryOp(Deref, e(Ident("p"))))))),
+  ]))
   let vars = @codegen.collect_addr_taken_vars(body)
   inspect(vars.contains("x"), content="true")
   inspect(vars.contains("p"), content="false")
@@ -1212,7 +1215,7 @@ test "emit_stmt: stack var decl and read" {
   // addr_taken にマーク
   ctx.addr_taken["x"] = true
   // VarDecl: int x = 42;
-  @codegen.emit_stmt(@ast.VarDecl("int", "x", Some(@ast.IntLiteral(42))), code, ctx)
+  @codegen.emit_stmt(s(VarDecl("int", "x", Some(e(IntLiteral(42))))), code, ctx)
   // x が stack_vars に登録されている
   inspect(ctx.is_stack_var("x"), content="true")
   // frame_size が 4 に増加
@@ -1225,10 +1228,10 @@ test "emit_expr: stack var ident uses i32.load" {
   let ctx = @codegen.CodegenContext::new()
   ctx.addr_taken["x"] = true
   // VarDecl で x をスタックに配置
-  @codegen.emit_stmt(@ast.VarDecl("int", "x", Some(@ast.IntLiteral(42))), code, ctx)
+  @codegen.emit_stmt(s(VarDecl("int", "x", Some(e(IntLiteral(42))))), code, ctx)
   // コードをリセットして Ident のみ確認
   let read_code : Array[Byte] = []
-  @codegen.emit_expr(@ast.Ident("x"), read_code, ctx)
+  @codegen.emit_expr(e(Ident("x")), read_code, ctx)
   // global.get 0 + i32.const 0 + i32.add + i32.load align=2 offset=0
   inspect(
     bytes_to_hex(read_code),
@@ -1241,7 +1244,7 @@ test "emit_stmt: non-addr-taken var uses wasm local" {
   let code : Array[Byte] = []
   let ctx = @codegen.CodegenContext::new()
   // addr_taken にマークしない
-  @codegen.emit_stmt(@ast.VarDecl("int", "y", Some(@ast.IntLiteral(10))), code, ctx)
+  @codegen.emit_stmt(s(VarDecl("int", "y", Some(e(IntLiteral(10))))), code, ctx)
   inspect(ctx.is_stack_var("y"), content="false")
   inspect(ctx.frame_size, content="0")
 }
@@ -1252,10 +1255,10 @@ test "emit_expr: addr_of stack variable" {
   let ctx = @codegen.CodegenContext::new()
   // 変数 x をアドレス取得対象にマークし、スタック変数として登録
   ctx.addr_taken["x"] = true
-  @codegen.emit_stmt(@ast.VarDecl("int", "x", Some(@ast.IntLiteral(42))), code, ctx)
+  @codegen.emit_stmt(s(VarDecl("int", "x", Some(e(IntLiteral(42))))), code, ctx)
   // &x を生成
   let addr_code : Array[Byte] = []
-  @codegen.emit_expr(@ast.UnaryOp(AddrOf, @ast.Ident("x")), addr_code, ctx)
+  @codegen.emit_expr(e(UnaryOp(AddrOf, e(Ident("x")))), addr_code, ctx)
   // global.get $sp (23 00) + i32.const 0 (41 00) + i32.add (6A)
   inspect(bytes_to_hex(addr_code), content="23 00 41 00 6A")
 }
@@ -1266,7 +1269,7 @@ test "emit_expr: addr_of non-stack variable raises error" {
   let ctx = @codegen.CodegenContext::new()
   // x はスタック変数として登録されていない
   let result : Result[Unit, Error] = try {
-    Ok(@codegen.emit_expr(@ast.UnaryOp(AddrOf, @ast.Ident("x")), code, ctx))
+    Ok(@codegen.emit_expr(e(UnaryOp(AddrOf, e(Ident("x")))), code, ctx))
   } catch {
     e => Err(e)
   }
@@ -1280,7 +1283,7 @@ test "emit_expr: addr_of non-variable raises error" {
   let result : Result[Unit, Error] = try {
     Ok(
       @codegen.emit_expr(
-        @ast.UnaryOp(AddrOf, @ast.IntLiteral(42)),
+        e(UnaryOp(AddrOf, e(IntLiteral(42)))),
         code,
         ctx,
       ),
@@ -1306,7 +1309,7 @@ test "emit_expr: pointer add scales by sizeof(int)" {
   let code : Array[Byte] = []
   let ctx = ptr_ctx()
   emit_expr(
-    @ast.BinaryOp(Add, @ast.Ident("p"), @ast.IntLiteral(3)),
+    e(BinaryOp(Add, e(Ident("p")), e(IntLiteral(3)))),
     code,
     ctx,
   )
@@ -1320,7 +1323,7 @@ test "emit_expr: int + pointer scales by sizeof(int)" {
   let code : Array[Byte] = []
   let ctx = ptr_ctx()
   emit_expr(
-    @ast.BinaryOp(Add, @ast.IntLiteral(3), @ast.Ident("p")),
+    e(BinaryOp(Add, e(IntLiteral(3)), e(Ident("p")))),
     code,
     ctx,
   )
@@ -1334,7 +1337,7 @@ test "emit_expr: pointer sub scales by sizeof(int)" {
   let code : Array[Byte] = []
   let ctx = ptr_ctx()
   emit_expr(
-    @ast.BinaryOp(Sub, @ast.Ident("p"), @ast.IntLiteral(2)),
+    e(BinaryOp(Sub, e(Ident("p")), e(IntLiteral(2)))),
     code,
     ctx,
   )
@@ -1351,7 +1354,7 @@ test "emit_expr: pointer diff divides by sizeof(int)" {
   ctx.var_types["p"] = @ast.CType::Ptr(@ast.CType::Int)
   ctx.var_types["q"] = @ast.CType::Ptr(@ast.CType::Int)
   emit_expr(
-    @ast.BinaryOp(Sub, @ast.Ident("p"), @ast.Ident("q")),
+    e(BinaryOp(Sub, e(Ident("p")), e(Ident("q")))),
     code,
     ctx,
   )
@@ -1366,7 +1369,7 @@ test "emit_expr: char pointer add no scaling" {
   let _ = ctx.add_local("cp")
   ctx.var_types["cp"] = @ast.CType::Ptr(@ast.CType::Char)
   emit_expr(
-    @ast.BinaryOp(Add, @ast.Ident("cp"), @ast.IntLiteral(5)),
+    e(BinaryOp(Add, e(Ident("cp")), e(IntLiteral(5)))),
     code,
     ctx,
   )
@@ -1378,7 +1381,7 @@ test "emit_expr: char pointer add no scaling" {
 test "emit_expr: non-pointer add unchanged" {
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(Add, @ast.IntLiteral(3), @ast.IntLiteral(4)),
+    e(BinaryOp(Add, e(IntLiteral(3)), e(IntLiteral(4)))),
     code,
     empty_ctx(),
   )
@@ -1400,7 +1403,7 @@ test "struct variable stack allocation: Point (8 bytes)" {
   // struct Point p; → スタック上に 8 バイト確保
   let code : Array[Byte] = []
   emit_stmt(
-    @ast.VarDecl("struct Point", "p", None),
+    s(VarDecl("struct Point", "p", None)),
     code,
     ctx,
   )
@@ -1428,7 +1431,7 @@ test "struct variable stack allocation: Rect (16 bytes)" {
   let ctx = CodegenContext::new(struct_defs~)
   let code : Array[Byte] = []
   emit_stmt(
-    @ast.VarDecl("struct Rect", "r", None),
+    s(VarDecl("struct Rect", "r", None)),
     code,
     ctx,
   )
@@ -1451,13 +1454,13 @@ test "struct variable ident returns address" {
   // まず変数を宣言してスタック配置
   let decl_code : Array[Byte] = []
   emit_stmt(
-    @ast.VarDecl("struct Point", "p", None),
+    s(VarDecl("struct Point", "p", None)),
     decl_code,
     ctx,
   )
   // p の参照: アドレスを返す（global.get $sp + i32.const 0 + i32.add）
   let code : Array[Byte] = []
-  emit_expr(@ast.Ident("p"), code, ctx)
+  emit_expr(e(Ident("p")), code, ctx)
   // global.get 0 (23 00), i32.const 0 (41 00), i32.add (6A)
   inspect(bytes_to_hex(code), content="23 00 41 00 6A")
 }
@@ -1477,13 +1480,13 @@ test "struct and scalar variable mixed allocation" {
   let code : Array[Byte] = []
   // int n = 10; → Wasm local
   emit_stmt(
-    @ast.VarDecl("int", "n", Some(@ast.IntLiteral(10))),
+    s(VarDecl("int", "n", Some(e(IntLiteral(10))))),
     code,
     ctx,
   )
   // struct Point p; → スタック配置
   emit_stmt(
-    @ast.VarDecl("struct Point", "p", None),
+    s(VarDecl("struct Point", "p", None)),
     code,
     ctx,
   )
@@ -1514,7 +1517,7 @@ test "pointer arithmetic with struct pointer scales by struct size" {
   // p + 1 → p + 1*8
   let code : Array[Byte] = []
   emit_expr(
-    @ast.BinaryOp(Add, @ast.Ident("p"), @ast.IntLiteral(1)),
+    e(BinaryOp(Add, e(Ident("p")), e(IntLiteral(1)))),
     code,
     ctx,
   )
@@ -1528,7 +1531,7 @@ test "emit_expr: sizeof(int) → i32.const 4" {
   let code : Array[Byte] = []
   let ctx = empty_ctx()
   emit_expr(
-    @ast.Expr::SizeOf("int"),
+    e(SizeOf("int")),
     code,
     ctx,
   )
@@ -1540,7 +1543,7 @@ test "emit_expr: sizeof(char) → i32.const 1" {
   let code : Array[Byte] = []
   let ctx = empty_ctx()
   emit_expr(
-    @ast.Expr::SizeOf("char"),
+    e(SizeOf("char")),
     code,
     ctx,
   )
@@ -1552,7 +1555,7 @@ test "emit_expr: sizeof(int*) → i32.const 4" {
   let code : Array[Byte] = []
   let ctx = empty_ctx()
   emit_expr(
-    @ast.Expr::SizeOf("int*"),
+    e(SizeOf("int*")),
     code,
     ctx,
   )
@@ -1565,7 +1568,7 @@ test "array variable stack allocation: int arr[5] (20 bytes)" {
   let ctx = CodegenContext::new()
   let code : Array[Byte] = []
   emit_stmt(
-    @ast.VarDecl("int[5]", "arr", None),
+    s(VarDecl("int[5]", "arr", None)),
     code,
     ctx,
   )
@@ -1583,7 +1586,7 @@ test "array variable type is registered as Array" {
   let code : Array[Byte] = []
   // int arr[3]; を宣言
   emit_stmt(
-    @ast.VarDecl("int[3]", "arr", None),
+    s(VarDecl("int[3]", "arr", None)),
     code,
     ctx,
   )
@@ -1597,17 +1600,17 @@ test "array subscript access via pointer arithmetic" {
   let setup_code : Array[Byte] = []
   // int arr[3]; を宣言（スタック上に 12 バイト確保）
   emit_stmt(
-    @ast.VarDecl("int[3]", "arr", None),
+    s(VarDecl("int[3]", "arr", None)),
     setup_code,
     ctx,
   )
   // arr[1] → *(arr + 1) をコード生成
   let expr_code : Array[Byte] = []
   emit_expr(
-    @ast.UnaryOp(
+    e(UnaryOp(
       Deref,
-      @ast.BinaryOp(Add, @ast.Ident("arr"), @ast.IntLiteral(1)),
-    ),
+      e(BinaryOp(Add, e(Ident("arr")), e(IntLiteral(1)))),
+    )),
     expr_code,
     ctx,
   )

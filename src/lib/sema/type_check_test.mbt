@@ -1,3 +1,6 @@
+fn e(kind : @ast.ExprKind) -> @ast.Expr { @ast.Expr::mk(kind) }
+fn s(kind : @ast.StmtKind) -> @ast.Stmt { @ast.Stmt::mk(kind) }
+
 // === is_assignable テスト ===
 
 test "is_assignable: Int to Int" {
@@ -69,7 +72,7 @@ test "TypeChecker: simple return 42" {
         "int",
         "main",
         [],
-        Block([Return(Some(IntLiteral(42)))]),
+        s(Block([s(Return(Some(e(IntLiteral(42)))))])),
       ),
     ],
   }
@@ -85,7 +88,7 @@ test "TypeChecker: return with variable" {
         "int",
         "main",
         [],
-        Block([VarDecl("int", "x", Some(IntLiteral(10))), Return(Some(Ident("x")))]),
+        s(Block([s(VarDecl("int", "x", Some(e(IntLiteral(10))))), s(Return(Some(e(Ident("x")))))])),
       ),
     ],
   }
@@ -102,13 +105,13 @@ test "TypeChecker: function call with matching args" {
         "int",
         "add",
         [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
-        Block([Return(Some(BinaryOp(Add, Ident("a"), Ident("b"))))]),
+        s(Block([s(Return(Some(e(BinaryOp(Add, e(Ident("a")), e(Ident("b")))))))])),
       ),
       FuncDef(
         "int",
         "main",
         [],
-        Block([Return(Some(Call("add", [IntLiteral(3), IntLiteral(4)])))]),
+        s(Block([s(Return(Some(e(Call("add", [e(IntLiteral(3)), e(IntLiteral(4))])))))])),
       ),
     ],
   }
@@ -124,9 +127,9 @@ test "TypeChecker: char to int assignment" {
         "int",
         "main",
         [],
-        Block(
-          [VarDecl("int", "x", Some(CharLiteral('a'))), Return(Some(Ident("x")))],
-        ),
+        s(Block(
+          [s(VarDecl("int", "x", Some(e(CharLiteral('a'))))), s(Return(Some(e(Ident("x")))))],
+        )),
       ),
     ],
   }
@@ -137,7 +140,7 @@ test "TypeChecker: char to int assignment" {
 test "TypeChecker: void function with no return value" {
   // void nop() { return; }
   let program : @ast.Program = {
-    top_levels: [FuncDef("void", "nop", [], Block([Return(None)]))],
+    top_levels: [FuncDef("void", "nop", [], s(Block([s(Return(None))])))],
   }
   let tc = TypeChecker::new()
   inspect(tc.check_program(program), content="Ok(())")
@@ -151,15 +154,15 @@ test "TypeChecker: if-else type check" {
         "int",
         "abs",
         [{ type_name: "int", name: "x" }],
-        Block(
+        s(Block(
           [
-            If(
-              BinaryOp(Lt, Ident("x"), IntLiteral(0)),
-              Return(Some(UnaryOp(Neg, Ident("x")))),
-              Some(Return(Some(Ident("x")))),
-            ),
+            s(If(
+              e(BinaryOp(Lt, e(Ident("x")), e(IntLiteral(0)))),
+              s(Return(Some(e(UnaryOp(Neg, e(Ident("x"))))))),
+              Some(s(Return(Some(e(Ident("x")))))),
+            )),
           ],
-        ),
+        )),
       ),
     ],
   }
@@ -177,7 +180,7 @@ test "TypeChecker: void function returns value" {
         "void",
         "f",
         [],
-        Block([Return(Some(IntLiteral(42)))]),
+        s(Block([s(Return(Some(e(IntLiteral(42)))))])),
       ),
     ],
   }
@@ -192,7 +195,7 @@ test "TypeChecker: undefined variable" {
   // int main() { return x; }
   let program : @ast.Program = {
     top_levels: [
-      FuncDef("int", "main", [], Block([Return(Some(Ident("x")))])),
+      FuncDef("int", "main", [], s(Block([s(Return(Some(e(Ident("x")))))]))),
     ],
   }
   let tc = TypeChecker::new()
@@ -210,7 +213,7 @@ test "TypeChecker: undefined function call" {
         "int",
         "main",
         [],
-        Block([Return(Some(Call("foo", [])))]),
+        s(Block([s(Return(Some(e(Call("foo", [])))))])),
       ),
     ],
   }
@@ -230,13 +233,13 @@ test "TypeChecker: wrong number of arguments" {
         "int",
         "add",
         [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
-        Block([Return(Some(BinaryOp(Add, Ident("a"), Ident("b"))))]),
+        s(Block([s(Return(Some(e(BinaryOp(Add, e(Ident("a")), e(Ident("b")))))))])),
       ),
       FuncDef(
         "int",
         "main",
         [],
-        Block([Return(Some(Call("add", [IntLiteral(1)])))]),
+        s(Block([s(Return(Some(e(Call("add", [e(IntLiteral(1))])))))])),
       ),
     ],
   }
@@ -255,13 +258,13 @@ test "TypeChecker: variable redefinition in same scope" {
         "int",
         "main",
         [],
-        Block(
+        s(Block(
           [
-            VarDecl("int", "x", Some(IntLiteral(1))),
-            VarDecl("int", "x", Some(IntLiteral(2))),
-            Return(Some(Ident("x"))),
+            s(VarDecl("int", "x", Some(e(IntLiteral(1))))),
+            s(VarDecl("int", "x", Some(e(IntLiteral(2))))),
+            s(Return(Some(e(Ident("x"))))),
           ],
-        ),
+        )),
       ),
     ],
   }
@@ -280,9 +283,9 @@ test "TypeChecker: calling a variable as function" {
         "int",
         "main",
         [],
-        Block(
-          [VarDecl("int", "x", Some(IntLiteral(1))), Return(Some(Call("x", [])))],
-        ),
+        s(Block(
+          [s(VarDecl("int", "x", Some(e(IntLiteral(1))))), s(Return(Some(e(Call("x", [])))))],
+        )),
       ),
     ],
   }
@@ -297,23 +300,23 @@ test "TypeChecker: calling a variable as function" {
 
 test "TypeChecker: infer_expr IntLiteral" {
   let tc = TypeChecker::new()
-  inspect(tc.infer_expr(IntLiteral(42)), content="Ok(Int)")
+  inspect(tc.infer_expr(e(IntLiteral(42))), content="Ok(Int)")
 }
 
 test "TypeChecker: infer_expr CharLiteral" {
   let tc = TypeChecker::new()
-  inspect(tc.infer_expr(CharLiteral('a')), content="Ok(Char)")
+  inspect(tc.infer_expr(e(CharLiteral('a'))), content="Ok(Char)")
 }
 
 test "TypeChecker: infer_expr StringLiteral" {
   let tc = TypeChecker::new()
-  inspect(tc.infer_expr(StringLiteral("hello")), content="Ok(Ptr(Char))")
+  inspect(tc.infer_expr(e(StringLiteral("hello"))), content="Ok(Ptr(Char))")
 }
 
 test "TypeChecker: infer_expr BinaryOp arithmetic" {
   let tc = TypeChecker::new()
   inspect(
-    tc.infer_expr(BinaryOp(Add, IntLiteral(1), IntLiteral(2))),
+    tc.infer_expr(e(BinaryOp(Add, e(IntLiteral(1)), e(IntLiteral(2))))),
     content="Ok(Int)",
   )
 }
@@ -321,20 +324,20 @@ test "TypeChecker: infer_expr BinaryOp arithmetic" {
 test "TypeChecker: infer_expr comparison" {
   let tc = TypeChecker::new()
   inspect(
-    tc.infer_expr(BinaryOp(Lt, IntLiteral(1), IntLiteral(2))),
+    tc.infer_expr(e(BinaryOp(Lt, e(IntLiteral(1)), e(IntLiteral(2))))),
     content="Ok(Int)",
   )
 }
 
 test "TypeChecker: infer_expr UnaryOp Neg" {
   let tc = TypeChecker::new()
-  inspect(tc.infer_expr(UnaryOp(Neg, IntLiteral(1))), content="Ok(Int)")
+  inspect(tc.infer_expr(e(UnaryOp(Neg, e(IntLiteral(1))))), content="Ok(Int)")
 }
 
 test "TypeChecker: infer_expr UnaryOp AddrOf" {
   let tc = TypeChecker::new()
   let _ = tc.symbols.add_symbol("x", Variable(@ast.CType::Int))
-  inspect(tc.infer_expr(UnaryOp(AddrOf, Ident("x"))), content="Ok(Ptr(Int))")
+  inspect(tc.infer_expr(e(UnaryOp(AddrOf, e(Ident("x"))))), content="Ok(Ptr(Int))")
 }
 
 test "TypeChecker: infer_expr UnaryOp Deref" {
@@ -343,14 +346,14 @@ test "TypeChecker: infer_expr UnaryOp Deref" {
     "p",
     Variable(@ast.CType::Ptr(@ast.CType::Int)),
   )
-  inspect(tc.infer_expr(UnaryOp(Deref, Ident("p"))), content="Ok(Int)")
+  inspect(tc.infer_expr(e(UnaryOp(Deref, e(Ident("p"))))), content="Ok(Int)")
 }
 
 test "TypeChecker: deref non-pointer is error" {
   let tc = TypeChecker::new()
   let _ = tc.symbols.add_symbol("x", Variable(@ast.CType::Int))
   inspect(
-    tc.infer_expr(UnaryOp(Deref, Ident("x"))),
+    tc.infer_expr(e(UnaryOp(Deref, e(Ident("x"))))),
     content="Err(\"cannot dereference non-pointer type: Int\")",
   )
 }
@@ -370,7 +373,7 @@ test "TypeChecker: struct definition registration" {
         "int",
         "main",
         [],
-        Block([Return(Some(IntLiteral(0)))]),
+        s(Block([s(Return(Some(e(IntLiteral(0)))))])),
       ),
     ],
   }
@@ -393,7 +396,7 @@ test "TypeChecker: struct variable declaration" {
         "int",
         "main",
         [],
-        Block([VarDecl("struct Point", "p", None), Return(Some(IntLiteral(0)))]),
+        s(Block([s(VarDecl("struct Point", "p", None)), s(Return(Some(e(IntLiteral(0)))))])),
       ),
     ],
   }
@@ -415,13 +418,13 @@ test "TypeChecker: struct pointer parameter" {
         "int",
         "get_x",
         [{ type_name: "struct Point*", name: "p" }],
-        Block([Return(Some(IntLiteral(0)))]),
+        s(Block([s(Return(Some(e(IntLiteral(0)))))])),
       ),
       FuncDef(
         "int",
         "main",
         [],
-        Block([Return(Some(IntLiteral(0)))]),
+        s(Block([s(Return(Some(e(IntLiteral(0)))))])),
       ),
     ],
   }
@@ -433,19 +436,19 @@ test "TypeChecker: struct pointer parameter" {
 
 test "transform_expr: IntLiteral has type Int" {
   let tc = TypeChecker::new()
-  let result = tc.transform_expr(@ast.Expr::IntLiteral(42))
+  let result = tc.transform_expr(e(IntLiteral(42)))
   inspect(result, content="Ok({kind: IntLiteral(42), ty: Int})")
 }
 
 test "transform_expr: CharLiteral has type Char" {
   let tc = TypeChecker::new()
-  let result = tc.transform_expr(@ast.Expr::CharLiteral('a'))
+  let result = tc.transform_expr(e(CharLiteral('a')))
   inspect(result, content="Ok({kind: CharLiteral('a'), ty: Char})")
 }
 
 test "transform_expr: StringLiteral has type Ptr(Char)" {
   let tc = TypeChecker::new()
-  let result = tc.transform_expr(@ast.Expr::StringLiteral("hello"))
+  let result = tc.transform_expr(e(StringLiteral("hello")))
   inspect(
     result,
     content="Ok({kind: StringLiteral(\"hello\"), ty: Ptr(Char)})",
@@ -455,7 +458,7 @@ test "transform_expr: StringLiteral has type Ptr(Char)" {
 test "transform_expr: BinaryOp Add preserves typed children" {
   let tc = TypeChecker::new()
   let result = tc.transform_expr(
-    @ast.Expr::BinaryOp(Add, IntLiteral(1), IntLiteral(2)),
+    e(BinaryOp(Add, e(IntLiteral(1)), e(IntLiteral(2)))),
   )
   inspect(
     result,
@@ -466,7 +469,7 @@ test "transform_expr: BinaryOp Add preserves typed children" {
 test "transform_expr: UnaryOp AddrOf yields Ptr type" {
   let tc = TypeChecker::new()
   let _ = tc.symbols.add_symbol("x", Variable(@ast.CType::Int))
-  let result = tc.transform_expr(@ast.Expr::UnaryOp(AddrOf, Ident("x")))
+  let result = tc.transform_expr(e(UnaryOp(AddrOf, e(Ident("x")))))
   inspect(
     result,
     content="Ok({kind: UnaryOp(AddrOf, {kind: Ident(\"x\"), ty: Int}), ty: Ptr(Int)})",
@@ -480,7 +483,7 @@ test "transform_expr: Call returns typed args and return type" {
     Function(@ast.CType::Int, [@ast.CType::Int, @ast.CType::Int]),
   )
   let result = tc.transform_expr(
-    @ast.Expr::Call("add", [IntLiteral(3), IntLiteral(4)]),
+    e(Call("add", [e(IntLiteral(3)), e(IntLiteral(4))])),
   )
   inspect(
     result,
@@ -494,14 +497,14 @@ test "transform_expr: Ident resolves variable type" {
     "p",
     Variable(@ast.CType::Ptr(@ast.CType::Int)),
   )
-  let result = tc.transform_expr(@ast.Expr::Ident("p"))
+  let result = tc.transform_expr(e(Ident("p")))
   inspect(result, content="Ok({kind: Ident(\"p\"), ty: Ptr(Int)})")
 }
 
 test "transform_program: simple return 42 produces typed AST" {
   let program : @ast.Program = {
     top_levels: [
-      FuncDef("int", "main", [], Block([Return(Some(IntLiteral(42)))])),
+      FuncDef("int", "main", [], s(Block([s(Return(Some(e(IntLiteral(42)))))]))),
     ],
   }
   let tc = TypeChecker::new()
@@ -517,7 +520,7 @@ test "transform_program: function with params produces typed params" {
         "int",
         "add",
         [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
-        Block([Return(Some(BinaryOp(Add, Ident("a"), Ident("b"))))]),
+        s(Block([s(Return(Some(e(BinaryOp(Add, e(Ident("a")), e(Ident("b")))))))])),
       ),
     ],
   }
@@ -532,7 +535,7 @@ test "transform_program: VarDecl resolves type from string to CType" {
     top_levels: [
       FuncDef(
         "int", "main", [],
-        Block([VarDecl("int", "x", Some(IntLiteral(42))), Return(Some(Ident("x")))]),
+        s(Block([s(VarDecl("int", "x", Some(e(IntLiteral(42))))), s(Return(Some(e(Ident("x")))))])),
       ),
     ],
   }
@@ -549,7 +552,7 @@ test "transform_program: struct def becomes StructDef with name only" {
         "Point",
         [{ type_name: "int", name: "x" }, { type_name: "int", name: "y" }],
       ),
-      FuncDef("int", "main", [], Block([Return(Some(IntLiteral(0)))])),
+      FuncDef("int", "main", [], s(Block([s(Return(Some(e(IntLiteral(0)))))]))),
     ],
   }
   let tc = TypeChecker::new()
@@ -562,19 +565,19 @@ test "transform_program: struct def becomes StructDef with name only" {
 
 test "transform_expr: sizeof(int) → IntLiteral(4)" {
   let tc = TypeChecker::new()
-  let result = tc.transform_expr(@ast.Expr::SizeOf("int"))
+  let result = tc.transform_expr(e(SizeOf("int")))
   inspect(result, content="Ok({kind: IntLiteral(4), ty: Int})")
 }
 
 test "transform_expr: sizeof(char) → IntLiteral(1)" {
   let tc = TypeChecker::new()
-  let result = tc.transform_expr(@ast.Expr::SizeOf("char"))
+  let result = tc.transform_expr(e(SizeOf("char")))
   inspect(result, content="Ok({kind: IntLiteral(1), ty: Int})")
 }
 
 test "transform_expr: sizeof(int*) → IntLiteral(4)" {
   let tc = TypeChecker::new()
-  let result = tc.transform_expr(@ast.Expr::SizeOf("int*"))
+  let result = tc.transform_expr(e(SizeOf("int*")))
   inspect(result, content="Ok({kind: IntLiteral(4), ty: Int})")
 }
 
@@ -585,12 +588,12 @@ test "transform_expr: sizeof(struct Point) with registered struct" {
     { type_name: "int", name: "y" },
   ]
   let _ = tc.symbols.register_struct("Point", fields)
-  let result = tc.transform_expr(@ast.Expr::SizeOf("struct Point"))
+  let result = tc.transform_expr(e(SizeOf("struct Point")))
   inspect(result, content="Ok({kind: IntLiteral(8), ty: Int})")
 }
 
 test "transform_expr: sizeof(void) → error" {
   let tc = TypeChecker::new()
-  let result = tc.transform_expr(@ast.Expr::SizeOf("void"))
+  let result = tc.transform_expr(e(SizeOf("void")))
   inspect(result, content="Err(\"cannot compute size of void\")")
 }

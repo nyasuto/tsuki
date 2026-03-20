@@ -503,6 +503,6 @@ test "parse array empty brackets without init is error" {
   let result = parse_stmt_from("int arr[];")
   inspect!(
     result,
-    content="Err(\"array declared with empty brackets must have an initializer list\")",
+    content="Err(\"array declared with empty brackets must have an initializer list at line 1, col 1\")",
   )
 }

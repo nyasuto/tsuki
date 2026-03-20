@@ -102,7 +102,8 @@ pub fn TypeChecker::transform_program(
                 "type mismatch in global variable initializer: expected " +
                 ty.to_string() +
                 ", got " +
-                typed_expr.ty.to_string(),
+                typed_expr.ty.to_string() +
+                @ast.format_pos(expr.pos),
               )
             }
             typed_tops.push(@ast.TypedTopLevel::GlobalVarDecl(ty, name, Some(typed_expr)))
@@ -123,12 +124,13 @@ pub fn TypeChecker::transform_stmt(
   self : TypeChecker,
   stmt : @ast.Stmt
 ) -> Result[@ast.TypedStmt, String] {
-  match stmt {
+  let pos = stmt.pos
+  match stmt.kind {
     Return(expr_opt) =>
       match (self.current_return_type, expr_opt) {
         (Some(Void), None) => Ok(@ast.TypedStmt::Return(None))
         (Some(Void), Some(_)) =>
-          Err("void function should not return a value")
+          Err("void function should not return a value" + @ast.format_pos(pos))
         (Some(expected), Some(expr)) => {
           let typed = match self.transform_expr(expr) {
             Ok(t) => t
@@ -141,12 +143,13 @@ pub fn TypeChecker::transform_stmt(
               "return type mismatch: expected " +
               expected.to_string() +
               ", got " +
-              typed.ty.to_string(),
+              typed.ty.to_string() +
+              @ast.format_pos(pos),
             )
           }
         }
         (Some(_), None) => Ok(@ast.TypedStmt::Return(None))
-        (None, _) => Err("return statement outside of function")
+        (None, _) => Err("return statement outside of function" + @ast.format_pos(pos))
       }
     VarDecl(type_name, name, init) => {
       let ty = match resolve_type_name(type_name) {
@@ -155,7 +158,7 @@ pub fn TypeChecker::transform_stmt(
       }
       match self.symbols.add_symbol(name, Variable(ty)) {
         Ok(_) => ()
-        Err(e) => return Err(e)
+        Err(e) => return Err(e + @ast.format_pos(pos))
       }
       match init {
         Some(expr) => {
@@ -170,7 +173,8 @@ pub fn TypeChecker::transform_stmt(
               "': expected " +
               ty.to_string() +
               ", got " +
-              typed.ty.to_string(),
+              typed.ty.to_string() +
+              @ast.format_pos(pos),
             )
           } else {
             Ok(@ast.TypedStmt::VarDecl(ty, name, Some(typed)))
@@ -280,7 +284,8 @@ pub fn TypeChecker::transform_expr(
   self : TypeChecker,
   expr : @ast.Expr
 ) -> Result[@ast.TypedExpr, String] {
-  match expr {
+  let pos = expr.pos
+  match expr.kind {
     IntLiteral(n) =>
       Ok({ kind: @ast.TypedExprKind::IntLiteral(n), ty: @ast.CType::Int })
     CharLiteral(c) =>
@@ -301,7 +306,7 @@ pub fn TypeChecker::transform_expr(
             Function(ret_ty, _) =>
               Ok({ kind: @ast.TypedExprKind::Ident(name), ty: ret_ty })
           }
-        None => Err("undefined variable: '" + name + "'")
+        None => Err("undefined variable: '" + name + "'" + @ast.format_pos(pos))
       }
     BinaryOp(op, lhs, rhs) => {
       let typed_lhs = match self.transform_expr(lhs) {
@@ -314,7 +319,7 @@ pub fn TypeChecker::transform_expr(
       }
       let result_ty = match self.check_binary_op(op, typed_lhs.ty, typed_rhs.ty) {
         Ok(t) => t
-        Err(e) => return Err(e)
+        Err(e) => return Err(e + @ast.format_pos(pos))
       }
       Ok(
         {
@@ -330,7 +335,7 @@ pub fn TypeChecker::transform_expr(
       }
       let result_ty = match self.check_unary_op(op, typed_operand.ty) {
         Ok(t) => t
-        Err(e) => return Err(e)
+        Err(e) => return Err(e + @ast.format_pos(pos))
       }
       Ok(
         {
@@ -351,7 +356,8 @@ pub fn TypeChecker::transform_expr(
                   "' expects " +
                   param_types.length().to_string() +
                   " arguments, got " +
-                  args.length().to_string(),
+                  args.length().to_string() +
+                  @ast.format_pos(pos),
                 )
               }
               let typed_args : Array[@ast.TypedExpr] = []
@@ -369,7 +375,8 @@ pub fn TypeChecker::transform_expr(
                     "': expected " +
                     param_types[i].to_string() +
                     ", got " +
-                    typed_arg.ty.to_string(),
+                    typed_arg.ty.to_string() +
+                    @ast.format_pos(pos),
                   )
                 }
                 typed_args.push(typed_arg)
@@ -381,9 +388,9 @@ pub fn TypeChecker::transform_expr(
                 },
               )
             }
-            Variable(_) => Err("'" + name + "' is not a function")
+            Variable(_) => Err("'" + name + "' is not a function" + @ast.format_pos(pos))
           }
-        None => Err("undefined function: '" + name + "'")
+        None => Err("undefined function: '" + name + "'" + @ast.format_pos(pos))
       }
     MemberAccess(base, field_name) => {
       let typed_base = match self.transform_expr(base) {
@@ -416,13 +423,14 @@ pub fn TypeChecker::transform_expr(
                     sname +
                     "' has no field named '" +
                     field_name +
-                    "'",
+                    "'" +
+                    @ast.format_pos(pos),
                   )
               }
             }
-            None => Err("undefined struct: '" + sname + "'")
+            None => Err("undefined struct: '" + sname + "'" + @ast.format_pos(pos))
           }
-        other => Err("member access on non-struct type: " + other.to_string())
+        other => Err("member access on non-struct type: " + other.to_string() + @ast.format_pos(pos))
       }
     }
     SizeOf(type_name) => {
@@ -451,7 +459,8 @@ pub fn TypeChecker::transform_expr(
           "cannot assign " +
           typed_rhs.ty.to_string() +
           " to " +
-          typed_lhs.ty.to_string(),
+          typed_lhs.ty.to_string() +
+          @ast.format_pos(pos),
         )
       } else {
         Ok(
