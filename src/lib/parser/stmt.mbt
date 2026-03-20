@@ -222,6 +222,19 @@ fn Parser::parse_params(self : Parser) -> Result[Array[@ast.Param], String] {
   Ok(params)
 }
 
+/// プログラム全体のパース: トップレベル定義（関数定義）の列
+pub fn Parser::parse_program(self : Parser) -> Result[@ast.Program, String] {
+  let top_levels : Array[@ast.TopLevel] = []
+  while not(self.at_eof()) {
+    let top_level = match self.parse_func_def() {
+      Ok(t) => t
+      Err(e) => return Err(e)
+    }
+    top_levels.push(top_level)
+  }
+  Ok(@ast.Program::{ top_levels, })
+}
+
 /// 関数定義のパース: type name(params) { body }
 pub fn Parser::parse_func_def(self : Parser) -> Result[@ast.TopLevel, String] {
   let ret_type = match self.parse_type_name() {

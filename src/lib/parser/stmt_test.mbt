@@ -235,3 +235,37 @@ test "parse var decl missing name" {
     content="Err(\"expected variable name, got Assign at line 1, col 5\")",
   )
 }
+
+/// ヘルパー: ソースコードからプログラムをパースする
+fn parse_program_from(source : String) -> Result[@ast.Program, String] {
+  let lexer = @lexer.Lexer::new(source)
+  let tokens = match lexer.tokenize() {
+    Ok(t) => t
+    Err(e) => return Err(e)
+  }
+  let parser = Parser::new(tokens)
+  parser.parse_program()
+}
+
+test "parse program: single function" {
+  let result = parse_program_from("int main() { return 42; }")
+  inspect!(result, content=(
+    #|Ok({top_levels: [FuncDef("int", "main", [], Block([Return(Some(IntLiteral(42)))]))]})
+  ))
+}
+
+test "parse program: multiple functions" {
+  let result = parse_program_from(
+    "int add(int a, int b) { return a + b; } int main() { return add(3, 4); }",
+  )
+  inspect!(result, content=(
+    #|Ok({top_levels: [FuncDef("int", "add", [{type_name: "int", name: "a"}, {type_name: "int", name: "b"}], Block([Return(Some(BinaryOp(Add, Ident("a"), Ident("b"))))])), FuncDef("int", "main", [], Block([Return(Some(Call("add", [IntLiteral(3), IntLiteral(4)])))]))]})
+  ))
+}
+
+test "parse program: empty program" {
+  let result = parse_program_from("")
+  inspect!(result, content=(
+    #|Ok({top_levels: []})
+  ))
+}
