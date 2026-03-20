@@ -557,3 +557,40 @@ test "transform_program: struct def becomes StructDef with name only" {
   let expected = "Ok({top_levels: [StructDef(\"Point\"), FuncDef(Int, \"main\", [], Block([Return(Some({kind: IntLiteral(0), ty: Int}))]))]})";
   inspect(result, content=expected)
 }
+
+// === sizeof 演算子の型チェック・変換テスト ===
+
+test "transform_expr: sizeof(int) → IntLiteral(4)" {
+  let tc = TypeChecker::new()
+  let result = tc.transform_expr(@ast.Expr::SizeOf("int"))
+  inspect(result, content="Ok({kind: IntLiteral(4), ty: Int})")
+}
+
+test "transform_expr: sizeof(char) → IntLiteral(1)" {
+  let tc = TypeChecker::new()
+  let result = tc.transform_expr(@ast.Expr::SizeOf("char"))
+  inspect(result, content="Ok({kind: IntLiteral(1), ty: Int})")
+}
+
+test "transform_expr: sizeof(int*) → IntLiteral(4)" {
+  let tc = TypeChecker::new()
+  let result = tc.transform_expr(@ast.Expr::SizeOf("int*"))
+  inspect(result, content="Ok({kind: IntLiteral(4), ty: Int})")
+}
+
+test "transform_expr: sizeof(struct Point) with registered struct" {
+  let tc = TypeChecker::new()
+  let fields : Array[@ast.StructField] = [
+    { type_name: "int", name: "x" },
+    { type_name: "int", name: "y" },
+  ]
+  let _ = tc.symbols.register_struct("Point", fields)
+  let result = tc.transform_expr(@ast.Expr::SizeOf("struct Point"))
+  inspect(result, content="Ok({kind: IntLiteral(8), ty: Int})")
+}
+
+test "transform_expr: sizeof(void) → error" {
+  let tc = TypeChecker::new()
+  let result = tc.transform_expr(@ast.Expr::SizeOf("void"))
+  inspect(result, content="Err(\"cannot compute size of void\")")
+}

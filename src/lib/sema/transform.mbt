@@ -425,6 +425,18 @@ pub fn TypeChecker::transform_expr(
         other => Err("member access on non-struct type: " + other.to_string())
       }
     }
+    SizeOf(type_name) => {
+      let ty = match resolve_type_name(type_name) {
+        Ok(t) => t
+        Err(e) => return Err(e)
+      }
+      let size = match self.symbols.size_of(ty) {
+        Ok(s) => s
+        Err(e) => return Err(e)
+      }
+      // sizeof はコンパイル時定数なので IntLiteral に畳み込む
+      Ok({ kind: @ast.TypedExprKind::IntLiteral(size), ty: @ast.CType::Int })
+    }
     Assign(lhs, rhs) => {
       let typed_lhs = match self.transform_expr(lhs) {
         Ok(t) => t

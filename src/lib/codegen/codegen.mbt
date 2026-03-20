@@ -326,6 +326,7 @@ fn collect_addr_taken_in_expr(
       collect_addr_taken_in_expr(r, vars)
     }
     MemberAccess(base, _) => collect_addr_taken_in_expr(base, vars)
+    SizeOf(_) => ()
     IntLiteral(_) => ()
     CharLiteral(_) => ()
     StringLiteral(_) => ()
@@ -531,6 +532,7 @@ fn infer_expr_type(
     BinaryOp(_, _, _) => Some(@ast.CType::Int)
     Call(_, _) => None
     Assign(_, _) => None
+    SizeOf(_) => Some(@ast.CType::Int)
     MemberAccess(base, field_name) =>
       match infer_struct_name(base, ctx) {
         Some(sname) =>
@@ -1056,6 +1058,18 @@ pub fn emit_expr(
       code.push(op_i32_load)
       code.push(b'\x02') // alignment: 2^2 = 4 bytes
       code.push(b'\x00') // memory offset: 0
+    }
+    SizeOf(type_name) => {
+      // sizeof(型名) → コンパイル時定数として i32.const を生成
+      let ty = match @sema.resolve_type_name(type_name) {
+        Ok(t) => t
+        Err(e) => raise CodegenError("codegen: sizeof: " + e)
+      }
+      let size = size_of_ctype(ty, struct_defs=ctx.struct_defs)
+      code.push(op_i32_const)
+      for b in @wasm.encode_sleb128(size) {
+        code.push(b)
+      }
     }
   }
 }

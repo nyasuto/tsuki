@@ -120,6 +120,23 @@ fn Parser::parse_expr_bp(
         @ast.Expr::Ident(name)
       }
     }
+    // sizeof(型名)
+    KwSizeof => {
+      self.advance() |> ignore
+      match self.expect(@lexer.Token::LParen) {
+        Ok(_) => ()
+        Err(e) => return Err(e)
+      }
+      let type_name = match self.parse_type_name() {
+        Ok(t) => t
+        Err(e) => return Err(e)
+      }
+      match self.expect(@lexer.Token::RParen) {
+        Ok(_) => ()
+        Err(e) => return Err(e)
+      }
+      @ast.Expr::SizeOf(type_name)
+    }
     // 括弧式: (expr)
     LParen => {
       self.advance() |> ignore

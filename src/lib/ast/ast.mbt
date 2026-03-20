@@ -54,6 +54,7 @@ pub(all) enum Expr {
   Call(String, Array[Expr])              // 関数呼び出し: name, args
   Assign(Expr, Expr)                    // 代入: lhs, rhs
   MemberAccess(Expr, String)            // メンバアクセス: base.field
+  SizeOf(String)                        // sizeof(型名): 型名文字列
 } derive(Show, Eq)
 
 /// 文
@@ -112,6 +113,7 @@ pub(all) enum TypedExprKind {
   Call(String, Array[TypedExpr])         // 関数呼び出し: name, args
   Assign(TypedExpr, TypedExpr)          // 代入: lhs, rhs
   MemberAccess(TypedExpr, String)       // メンバアクセス: base.field
+  SizeOf(CType)                         // sizeof(型): 解決済み型
 } derive(Show, Eq)
 
 /// 型付き文

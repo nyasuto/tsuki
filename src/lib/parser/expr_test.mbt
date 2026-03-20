@@ -427,3 +427,35 @@ test "parse chained arrow operator" {
     content="Ok(MemberAccess(UnaryOp(Deref, MemberAccess(UnaryOp(Deref, Ident(\"p\")), \"next\")), \"value\"))",
   )
 }
+
+// === sizeof 演算子 ===
+
+test "parse sizeof(int)" {
+  let parser = make_parser("sizeof(int)")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(SizeOf(\"int\"))")
+}
+
+test "parse sizeof(char)" {
+  let parser = make_parser("sizeof(char)")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(SizeOf(\"char\"))")
+}
+
+test "parse sizeof(int*)" {
+  let parser = make_parser("sizeof(int*)")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(SizeOf(\"int*\"))")
+}
+
+test "parse sizeof(struct Point)" {
+  let parser = make_parser("sizeof(struct Point)")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(SizeOf(\"struct Point\"))")
+}
+
+test "parse sizeof in expression: sizeof(int) + 1" {
+  let parser = make_parser("sizeof(int) + 1")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(BinaryOp(Add, SizeOf(\"int\"), IntLiteral(1)))")
+}

@@ -1521,3 +1521,41 @@ test "pointer arithmetic with struct pointer scales by struct size" {
   // local.get 0 (20 00), i32.const 1 (41 01), i32.const 8 (41 08), i32.mul (6C), i32.add (6A)
   inspect(bytes_to_hex(code), content="20 00 41 01 41 08 6C 6A")
 }
+
+// === sizeof 演算子の Codegen テスト ===
+
+test "emit_expr: sizeof(int) → i32.const 4" {
+  let code : Array[Byte] = []
+  let ctx = empty_ctx()
+  emit_expr(
+    @ast.Expr::SizeOf("int"),
+    code,
+    ctx,
+  )
+  // i32.const 4 → 41 04
+  inspect(bytes_to_hex(code), content="41 04")
+}
+
+test "emit_expr: sizeof(char) → i32.const 1" {
+  let code : Array[Byte] = []
+  let ctx = empty_ctx()
+  emit_expr(
+    @ast.Expr::SizeOf("char"),
+    code,
+    ctx,
+  )
+  // i32.const 1 → 41 01
+  inspect(bytes_to_hex(code), content="41 01")
+}
+
+test "emit_expr: sizeof(int*) → i32.const 4" {
+  let code : Array[Byte] = []
+  let ctx = empty_ctx()
+  emit_expr(
+    @ast.Expr::SizeOf("int*"),
+    code,
+    ctx,
+  )
+  // i32.const 4 → 41 04
+  inspect(bytes_to_hex(code), content="41 04")
+}
