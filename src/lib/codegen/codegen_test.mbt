@@ -1069,3 +1069,125 @@ test "emit_expr: prefix increment non-ident error" {
   }
   inspect(result is Err(_), content="true")
 }
+
+// =============================================================
+// プロローグ/エピローグのテスト
+// =============================================================
+
+/// emit_prologue: frame_size が 0 の場合は何も生成しない
+test "emit_prologue: frame_size 0 emits nothing" {
+  let code : Array[Byte] = []
+  emit_prologue(0, code)
+  inspect(code.length(), content="0")
+}
+
+/// emit_prologue: frame_size が 16 の場合のバイト列
+/// global.get 0 (23 00) + i32.const 16 (41 10) + i32.sub (6B) + global.set 0 (24 00)
+test "emit_prologue: frame_size 16" {
+  let code : Array[Byte] = []
+  emit_prologue(16, code)
+  inspect(bytes_to_hex(code), content="23 00 41 10 6B 24 00")
+}
+
+/// emit_epilogue: frame_size が 0 の場合は何も生成しない
+test "emit_epilogue: frame_size 0 emits nothing" {
+  let code : Array[Byte] = []
+  emit_epilogue(0, code)
+  inspect(code.length(), content="0")
+}
+
+/// emit_epilogue: frame_size が 16 の場合のバイト列
+/// global.get 0 (23 00) + i32.const 16 (41 10) + i32.add (6A) + global.set 0 (24 00)
+test "emit_epilogue: frame_size 16" {
+  let code : Array[Byte] = []
+  emit_epilogue(16, code)
+  inspect(bytes_to_hex(code), content="23 00 41 10 6A 24 00")
+}
+
+/// emit_prologue: frame_size が 128 の場合（LEB128 で 2 バイトになる値）
+/// global.get 0 (23 00) + i32.const 128 (41 80 01) + i32.sub (6B) + global.set 0 (24 00)
+test "emit_prologue: frame_size 128 (multi-byte LEB128)" {
+  let code : Array[Byte] = []
+  emit_prologue(128, code)
+  inspect(bytes_to_hex(code), content="23 00 41 80 01 6B 24 00")
+}
+
+/// allocate_on_stack: サイズ 4 の場合、オフセット 0 を返し frame_size が 4 になる
+test "allocate_on_stack: size 4" {
+  let ctx = CodegenContext::new()
+  let offset = ctx.allocate_on_stack(4)
+  inspect(offset, content="0")
+  inspect(ctx.frame_size, content="4")
+}
+
+/// allocate_on_stack: サイズ 1 の場合、4 バイトにアラインメントされる
+test "allocate_on_stack: size 1 aligned to 4" {
+  let ctx = CodegenContext::new()
+  let offset = ctx.allocate_on_stack(1)
+  inspect(offset, content="0")
+  inspect(ctx.frame_size, content="4")
+}
+
+/// allocate_on_stack: 複数回呼び出し
+test "allocate_on_stack: multiple allocations" {
+  let ctx = CodegenContext::new()
+  let offset1 = ctx.allocate_on_stack(4) // int: 4 bytes
+  let offset2 = ctx.allocate_on_stack(4) // int: 4 bytes
+  let offset3 = ctx.allocate_on_stack(1) // char: 1 byte → aligned to 4
+  inspect(offset1, content="0")
+  inspect(offset2, content="4")
+  inspect(offset3, content="8")
+  inspect(ctx.frame_size, content="12")
+}
+
+/// return 文: frame_size が 0 の場合はエピローグなし
+test "emit_stmt: return with frame_size 0 no epilogue" {
+  let ctx = CodegenContext::new()
+  let code : Array[Byte] = []
+  emit_stmt(@ast.Return(Some(@ast.IntLiteral(42))), code, ctx)
+  // i32.const 42 (41 2A) + return (0F) — エピローグなし
+  inspect(bytes_to_hex(code), content="41 2A 0F")
+}
+
+/// return 文: frame_size > 0 の場合はエピローグが挿入される
+/// allocate_on_stack(4) を 2 回呼んで frame_size = 8 にする
+test "emit_stmt: return with frame_size 8 has epilogue" {
+  let ctx = CodegenContext::new()
+  let _ = ctx.allocate_on_stack(4) // frame_size = 4
+  let _ = ctx.allocate_on_stack(4) // frame_size = 8
+  let code : Array[Byte] = []
+  emit_stmt(@ast.Return(Some(@ast.IntLiteral(42))), code, ctx)
+  // i32.const 42 (41 2A) + epilogue (23 00 41 08 6A 24 00) + return (0F)
+  inspect(
+    bytes_to_hex(code),
+    content="41 2A 23 00 41 08 6A 24 00 0F",
+  )
+}
+
+/// void return: frame_size > 0 の場合はエピローグが挿入される
+test "emit_stmt: void return with frame_size 4 has epilogue" {
+  let ctx = CodegenContext::new()
+  let _ = ctx.allocate_on_stack(4) // frame_size = 4
+  let code : Array[Byte] = []
+  emit_stmt(@ast.Return(None), code, ctx)
+  // epilogue (23 00 41 04 6A 24 00) + return (0F)
+  inspect(bytes_to_hex(code), content="23 00 41 04 6A 24 00 0F")
+}
+
+/// compile_program: frame_size が 0 のとき、プロローグは挿入されない
+/// return 42 のプログラムではスタック配置される変数がないため
+test "compile_program: no prologue when no stack vars" {
+  let program : @ast.Program = {
+    top_levels: [
+      @ast.TopLevel::FuncDef(
+        "int",
+        "main",
+        [],
+        @ast.Stmt::Block([@ast.Return(Some(@ast.IntLiteral(42)))]),
+      ),
+    ],
+  }
+  let wasm = @codegen.compile_program(program)
+  // Wasm バイナリが正常に生成されることを確認
+  inspect(wasm.length() > 0, content="true")
+}

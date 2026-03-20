@@ -68,11 +68,14 @@ pub struct CodegenContext {
   mut next_index : Int
   /// 関数名 → function index のマッピング
   functions : Map[String, Int]
+  /// 関数のスタックフレームサイズ（バイト数）
+  /// アドレスを取る変数（&x）がスタック上に配置されるとき、このサイズが増加する
+  pub mut frame_size : Int
 }
 
 /// 新しい CodegenContext を作成する
 pub fn CodegenContext::new() -> CodegenContext {
-  { locals: {}, next_index: 0, functions: {} }
+  { locals: {}, next_index: 0, functions: {}, frame_size: 0 }
 }
 
 /// 関数パラメータをローカル変数として登録する
@@ -81,7 +84,7 @@ pub fn CodegenContext::from_params(
   params : Array[@ast.Param],
   functions~ : Map[String, Int] = {}
 ) -> CodegenContext {
-  let ctx : CodegenContext = { locals: {}, next_index: 0, functions }
+  let ctx : CodegenContext = { locals: {}, next_index: 0, functions, frame_size: 0 }
   for param in params {
     ctx.locals[param.name] = ctx.next_index
     ctx.next_index += 1
@@ -111,6 +114,71 @@ pub fn CodegenContext::resolve_function(
   name : String
 ) -> Int? {
   self.functions.get(name)
+}
+
+/// スタックフレーム上に指定サイズの領域を確保し、SP からのオフセットを返す
+/// 4 バイトアラインメントを適用する
+pub fn CodegenContext::allocate_on_stack(self : CodegenContext, size : Int) -> Int {
+  // 4 バイト境界にアラインメント
+  let aligned = (size + 3) / 4 * 4
+  let offset = self.frame_size
+  self.frame_size += aligned
+  offset
+}
+
+/// 関数プロローグを生成する: SP -= frame_size
+/// スタックは上位アドレスから下位に向かって成長する
+/// frame_size が 0 の場合は何も生成しない
+pub fn emit_prologue(frame_size : Int, code : Array[Byte]) -> Unit {
+  if frame_size > 0 {
+    // global.get $sp
+    code.push(op_global_get)
+    let sp_bytes = @wasm.encode_uleb128(sp_global_index)
+    for b in sp_bytes {
+      code.push(b)
+    }
+    // i32.const frame_size
+    code.push(op_i32_const)
+    let size_bytes = @wasm.encode_sleb128(frame_size)
+    for b in size_bytes {
+      code.push(b)
+    }
+    // i32.sub
+    code.push(op_i32_sub)
+    // global.set $sp
+    code.push(op_global_set)
+    let sp_bytes2 = @wasm.encode_uleb128(sp_global_index)
+    for b in sp_bytes2 {
+      code.push(b)
+    }
+  }
+}
+
+/// 関数エピローグを生成する: SP += frame_size
+/// frame_size が 0 の場合は何も生成しない
+pub fn emit_epilogue(frame_size : Int, code : Array[Byte]) -> Unit {
+  if frame_size > 0 {
+    // global.get $sp
+    code.push(op_global_get)
+    let sp_bytes = @wasm.encode_uleb128(sp_global_index)
+    for b in sp_bytes {
+      code.push(b)
+    }
+    // i32.const frame_size
+    code.push(op_i32_const)
+    let size_bytes = @wasm.encode_sleb128(frame_size)
+    for b in size_bytes {
+      code.push(b)
+    }
+    // i32.add
+    code.push(op_i32_add)
+    // global.set $sp
+    code.push(op_global_set)
+    let sp_bytes2 = @wasm.encode_uleb128(sp_global_index)
+    for b in sp_bytes2 {
+      code.push(b)
+    }
+  }
 }
 
 /// 二項演算子を対応する Wasm オペコードに変換する
@@ -400,9 +468,15 @@ pub fn emit_stmt(
   match stmt {
     Return(Some(expr)) => {
       emit_expr(expr, code, ctx)
+      // return 前にエピローグ（SP の復元）を挿入
+      emit_epilogue(ctx.frame_size, code)
       code.push(op_return)
     }
-    Return(None) => code.push(op_return)
+    Return(None) => {
+      // return 前にエピローグ（SP の復元）を挿入
+      emit_epilogue(ctx.frame_size, code)
+      code.push(op_return)
+    }
     VarDecl(_type_name, name, init) => {
       let index = ctx.add_local(name)
       match init {
@@ -541,6 +615,20 @@ fn compile_function(
   // 関数末尾に unreachable を追加
   // 全パスが return で抜ける場合、関数 end 到達時のスタック型チェックを通すため
   code.push(op_unreachable)
+  // frame_size > 0 の場合、プロローグをコード先頭に挿入する
+  // プロローグ: SP -= frame_size（スタックフレームの確保）
+  // 本体コンパイル後に frame_size が確定するため、後から先頭に挿入する
+  let final_code = if ctx.frame_size > 0 {
+    let prologue : Array[Byte] = []
+    emit_prologue(ctx.frame_size, prologue)
+    // prologue + code を結合
+    for b in code {
+      prologue.push(b)
+    }
+    prologue
+  } else {
+    code
+  }
   // パラメータ以外に追加されたローカル変数の数を計算
   let extra_locals = ctx.next_index - params.length()
   let locals : Array[@wasm.LocalDecl] = if extra_locals > 0 {
@@ -548,7 +636,7 @@ fn compile_function(
   } else {
     []
   }
-  { locals, code }
+  { locals, code: final_code }
 }
 
 /// Program 全体をコンパイルして完全な Wasm バイナリ（Array[Byte]）を生成する
