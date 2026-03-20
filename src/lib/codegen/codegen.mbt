@@ -507,7 +507,12 @@ fn infer_expr_type(
     IntLiteral(_) => Some(@ast.CType::Int)
     CharLiteral(_) => Some(@ast.CType::Char)
     StringLiteral(_) => Some(@ast.CType::Ptr(@ast.CType::Char))
-    Ident(name) => ctx.var_types.get(name)
+    Ident(name) =>
+      // 配列型はポインタにディケイする: Array(elem, _) → Ptr(elem)
+      match ctx.var_types.get(name) {
+        Some(Array(elem, _)) => Some(@ast.CType::Ptr(elem))
+        other => other
+      }
     UnaryOp(AddrOf, Ident(name)) =>
       match ctx.var_types.get(name) {
         Some(ty) => Some(@ast.CType::Ptr(ty))
@@ -762,6 +767,9 @@ pub fn emit_expr(
           match ctx.var_types.get(name) {
             Some(Struct(_)) =>
               // 構造体変数: アドレスを返す（メンバアクセスやポインタ渡しで使用）
+              emit_stack_addr(offset, code)
+            Some(Array(_, _)) =>
+              // 配列変数: アドレスを返す（配列はポインタにディケイする）
               emit_stack_addr(offset, code)
             _ =>
               // スカラー変数: メモリからロード
@@ -1134,9 +1142,13 @@ pub fn emit_stmt(
         }
         Err(_) => None
       }
-      // 構造体型かどうか判定: 構造体は常にスタック配置（Wasm local に収まらない）
+      // 構造体型・配列型の判定: スタック配置が必要な型
       let is_struct = match resolved_type {
         Some(Struct(_)) => true
+        _ => false
+      }
+      let is_array = match resolved_type {
+        Some(Array(_, _)) => true
         _ => false
       }
       if is_struct {
@@ -1154,6 +1166,14 @@ pub fn emit_stmt(
         }
         let _offset = ctx.add_struct_stack_var(name, struct_size)
         // 構造体の初期化は現時点では未対応（メンバアクセスタスクで対応）
+      } else if is_array {
+        // 配列変数: スタックフレーム上に配列サイズ分を確保
+        let array_size = match resolved_type {
+          Some(Array(elem, count)) =>
+            size_of_ctype(elem, struct_defs=ctx.struct_defs) * count
+          _ => raise CodegenError("codegen: 配列型の判定に失敗")
+        }
+        let _offset = ctx.add_struct_stack_var(name, array_size)
       } else if ctx.addr_taken.contains(name) {
         // アドレスが取られる変数: スタックフレーム上に配置
         let offset = ctx.add_stack_var(name)

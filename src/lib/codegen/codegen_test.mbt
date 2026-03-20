@@ -1559,3 +1559,61 @@ test "emit_expr: sizeof(int*) → i32.const 4" {
   // i32.const 4 → 41 04
   inspect(bytes_to_hex(code), content="41 04")
 }
+
+/// 配列変数のスタック配置: int arr[5] → 20 バイト確保
+test "array variable stack allocation: int arr[5] (20 bytes)" {
+  let ctx = CodegenContext::new()
+  let code : Array[Byte] = []
+  emit_stmt(
+    @ast.VarDecl("int[5]", "arr", None),
+    code,
+    ctx,
+  )
+  // frame_size が 20 であることを確認（5 * sizeof(int) = 20）
+  inspect(ctx.frame_size, content="20")
+  // arr がスタック変数として登録されていることを確認
+  inspect(ctx.is_stack_var("arr"), content="true")
+  // arr のスタックオフセットが 0 であることを確認
+  inspect(ctx.stack_vars.get("arr"), content="Some(0)")
+}
+
+/// 配列変数の型登録: Array(Int, 3) が記録されること
+test "array variable type is registered as Array" {
+  let ctx = CodegenContext::new()
+  let code : Array[Byte] = []
+  // int arr[3]; を宣言
+  emit_stmt(
+    @ast.VarDecl("int[3]", "arr", None),
+    code,
+    ctx,
+  )
+  // arr の型が Array(Int, 3) として記録されている
+  inspect(ctx.var_types.get("arr"), content="Some(Array(Int, 3))")
+}
+
+/// 配列添字アクセス: arr[i] は *(arr + i) にデシュガーされ、ポインタ算術でスケーリングされる
+test "array subscript access via pointer arithmetic" {
+  let ctx = CodegenContext::new()
+  let setup_code : Array[Byte] = []
+  // int arr[3]; を宣言（スタック上に 12 バイト確保）
+  emit_stmt(
+    @ast.VarDecl("int[3]", "arr", None),
+    setup_code,
+    ctx,
+  )
+  // arr[1] → *(arr + 1) をコード生成
+  let expr_code : Array[Byte] = []
+  emit_expr(
+    @ast.UnaryOp(
+      Deref,
+      @ast.BinaryOp(Add, @ast.Ident("arr"), @ast.IntLiteral(1)),
+    ),
+    expr_code,
+    ctx,
+  )
+  // SP global.get(0) + offset(0) でアドレス取得、+ 1*4 でスケーリング、i32.load で読み取り
+  inspect(
+    bytes_to_hex(expr_code),
+    content="23 00 41 00 6A 41 01 41 04 6C 6A 28 02 00",
+  )
+}
