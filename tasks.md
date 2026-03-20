@@ -38,7 +38,7 @@
 
 ---
 
-## Phase 2: Parser + 基本 Codegen — ⏳ WAITING
+## Phase 2: Parser + 基本 Codegen — ✅ DONE
 
 ### AST 定義
 - [x] 式（Expr）の enum 定義: IntLit, CharLit, StringLit, Ident, BinaryOp, UnaryOp, Call, Assign
@@ -81,15 +81,15 @@
 - [x] `int main() { return 42; }` → .wasm → wasmtime → exit code 42
 - [x] `int main() { return 3 + 4 * 5; }` → 23
 - [x] `int add(int a, int b) { return a + b; } int main() { return add(3, 4); }` → 7
-- [ ] `int main() { int x = 10; int y = 20; return x + y; }` → 30
+- [x] `int main() { int x = 10; int y = 20; return x + y; }` → 30
 
 ### Phase 2 完了条件
-- [ ] `moon check` エラーなし
-- [ ] `moon test` 全テスト通過
-- [ ] 上記の統合テスト全て通過
+- [x] `moon check` エラーなし
+- [x] `moon test` 全テスト通過
+- [x] 上記の統合テスト全て通過
 
-**完了日時**:  
-**特記事項**:  
+**完了日時**: 2026-03-20
+**特記事項**: 全266テスト通過。統合テスト4件（return 42, 算術式, 関数呼び出し, ローカル変数）全てwasmtimeで検証済み。
 
 ---
 
