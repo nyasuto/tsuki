@@ -1191,3 +1191,57 @@ test "compile_program: no prologue when no stack vars" {
   // Wasm バイナリが正常に生成されることを確認
   inspect(wasm.length() > 0, content="true")
 }
+
+/// collect_addr_taken_vars: &x を検出する
+test "collect_addr_taken_vars: detects address-of" {
+  // int x = 42; int *p = &x; return *p;
+  let body = @ast.Stmt::Block([
+    @ast.VarDecl("int", "x", Some(@ast.IntLiteral(42))),
+    @ast.VarDecl("int*", "p", Some(@ast.UnaryOp(AddrOf, @ast.Ident("x")))),
+    @ast.Return(Some(@ast.UnaryOp(Deref, @ast.Ident("p")))),
+  ])
+  let vars = @codegen.collect_addr_taken_vars(body)
+  inspect(vars.contains("x"), content="true")
+  inspect(vars.contains("p"), content="false")
+}
+
+/// スタック配置変数: VarDecl + Ident
+test "emit_stmt: stack var decl and read" {
+  let code : Array[Byte] = []
+  let ctx = @codegen.CodegenContext::new()
+  // addr_taken にマーク
+  ctx.addr_taken["x"] = true
+  // VarDecl: int x = 42;
+  @codegen.emit_stmt(@ast.VarDecl("int", "x", Some(@ast.IntLiteral(42))), code, ctx)
+  // x が stack_vars に登録されている
+  inspect(ctx.is_stack_var("x"), content="true")
+  // frame_size が 4 に増加
+  inspect(ctx.frame_size, content="4")
+}
+
+/// スタック配置変数: 読み取りが i32.load を使う
+test "emit_expr: stack var ident uses i32.load" {
+  let code : Array[Byte] = []
+  let ctx = @codegen.CodegenContext::new()
+  ctx.addr_taken["x"] = true
+  // VarDecl で x をスタックに配置
+  @codegen.emit_stmt(@ast.VarDecl("int", "x", Some(@ast.IntLiteral(42))), code, ctx)
+  // コードをリセットして Ident のみ確認
+  let read_code : Array[Byte] = []
+  @codegen.emit_expr(@ast.Ident("x"), read_code, ctx)
+  // global.get 0 + i32.const 0 + i32.add + i32.load align=2 offset=0
+  inspect(
+    bytes_to_hex(read_code),
+    content="23 00 41 00 6A 28 02 00",
+  )
+}
+
+/// 通常の変数はスタック配置されない
+test "emit_stmt: non-addr-taken var uses wasm local" {
+  let code : Array[Byte] = []
+  let ctx = @codegen.CodegenContext::new()
+  // addr_taken にマークしない
+  @codegen.emit_stmt(@ast.VarDecl("int", "y", Some(@ast.IntLiteral(10))), code, ctx)
+  inspect(ctx.is_stack_var("y"), content="false")
+  inspect(ctx.frame_size, content="0")
+}

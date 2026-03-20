@@ -54,6 +54,10 @@ let op_unreachable : Byte = b'\x00'
 let op_global_get : Byte = b'\x23'
 let op_global_set : Byte = b'\x24'
 
+/// メモリ命令のオペコード
+let op_i32_load : Byte = b'\x28'
+let op_i32_store : Byte = b'\x36'
+
 /// スタックポインタのグローバルインデックス
 let sp_global_index : Int = 0
 
@@ -71,20 +75,44 @@ pub struct CodegenContext {
   /// 関数のスタックフレームサイズ（バイト数）
   /// アドレスを取る変数（&x）がスタック上に配置されるとき、このサイズが増加する
   pub mut frame_size : Int
+  /// スタック配置変数: 変数名 → SP からのオフセット
+  /// アドレスを取る変数（&x）のみスタック上に配置される
+  stack_vars : Map[String, Int]
+  /// アドレスが取られる変数名のセット（事前スキャンで構築）
+  addr_taken : Map[String, Bool]
+  /// 一時変数の Wasm local index（スタック変数の代入時に使用）
+  mut temp_local : Int?
 }
 
 /// 新しい CodegenContext を作成する
 pub fn CodegenContext::new() -> CodegenContext {
-  { locals: {}, next_index: 0, functions: {}, frame_size: 0 }
+  {
+    locals: {},
+    next_index: 0,
+    functions: {},
+    frame_size: 0,
+    stack_vars: {},
+    addr_taken: {},
+    temp_local: None,
+  }
 }
 
 /// 関数パラメータをローカル変数として登録する
 /// パラメータは関数の先頭から順に local index 0, 1, 2, ... に割り当てられる
 pub fn CodegenContext::from_params(
   params : Array[@ast.Param],
-  functions~ : Map[String, Int] = {}
+  functions~ : Map[String, Int] = {},
+  addr_taken~ : Map[String, Bool] = {}
 ) -> CodegenContext {
-  let ctx : CodegenContext = { locals: {}, next_index: 0, functions, frame_size: 0 }
+  let ctx : CodegenContext = {
+    locals: {},
+    next_index: 0,
+    functions,
+    frame_size: 0,
+    stack_vars: {},
+    addr_taken,
+    temp_local: None,
+  }
   for param in params {
     ctx.locals[param.name] = ctx.next_index
     ctx.next_index += 1
@@ -114,6 +142,35 @@ pub fn CodegenContext::resolve_function(
   name : String
 ) -> Int? {
   self.functions.get(name)
+}
+
+/// 一時変数の Wasm local index を取得する（遅延割り当て）
+/// スタック変数の代入式で値を保持するために使用する
+pub fn CodegenContext::get_temp_local(self : CodegenContext) -> Int {
+  match self.temp_local {
+    Some(idx) => idx
+    None => {
+      let idx = self.next_index
+      self.next_index += 1
+      self.temp_local = Some(idx)
+      idx
+    }
+  }
+}
+
+/// 変数がスタック配置かどうかを判定する
+pub fn CodegenContext::is_stack_var(
+  self : CodegenContext,
+  name : String
+) -> Bool {
+  self.stack_vars.contains(name)
+}
+
+/// スタック変数を登録する: スタックフレーム上に 4 バイト確保し、オフセットを記録する
+pub fn CodegenContext::add_stack_var(self : CodegenContext, name : String) -> Int {
+  let offset = self.allocate_on_stack(4)
+  self.stack_vars[name] = offset
+  offset
 }
 
 /// スタックフレーム上に指定サイズの領域を確保し、SP からのオフセットを返す
@@ -177,6 +234,119 @@ pub fn emit_epilogue(frame_size : Int, code : Array[Byte]) -> Unit {
     let sp_bytes2 = @wasm.encode_uleb128(sp_global_index)
     for b in sp_bytes2 {
       code.push(b)
+    }
+  }
+}
+
+/// スタック変数のアドレスをスタックに積む: global.get $sp + i32.const offset + i32.add
+fn emit_stack_addr(offset : Int, code : Array[Byte]) -> Unit {
+  // global.get $sp
+  code.push(op_global_get)
+  for b in @wasm.encode_uleb128(sp_global_index) {
+    code.push(b)
+  }
+  // i32.const offset
+  code.push(op_i32_const)
+  for b in @wasm.encode_sleb128(offset) {
+    code.push(b)
+  }
+  // i32.add
+  code.push(op_i32_add)
+}
+
+/// スタック変数の値をロードする: アドレスを計算して i32.load
+fn emit_stack_load(offset : Int, code : Array[Byte]) -> Unit {
+  emit_stack_addr(offset, code)
+  // i32.load align=2 offset=0
+  code.push(op_i32_load)
+  code.push(b'\x02') // alignment: 2^2 = 4 bytes
+  code.push(b'\x00') // memory offset: 0
+}
+
+/// i32.store 命令を生成する（アドレスと値がスタック上にあることが前提）
+fn emit_i32_store(code : Array[Byte]) -> Unit {
+  code.push(op_i32_store)
+  code.push(b'\x02') // alignment: 2^2 = 4 bytes
+  code.push(b'\x00') // memory offset: 0
+}
+
+/// 関数本体の AST を走査し、アドレスが取られる変数名を収集する
+/// &x の形で参照される変数のセットを返す
+pub fn collect_addr_taken_vars(stmt : @ast.Stmt) -> Map[String, Bool] {
+  let vars : Map[String, Bool] = {}
+  collect_addr_taken_in_stmt(stmt, vars)
+  vars
+}
+
+/// 式の中からアドレスが取られる変数を収集する
+fn collect_addr_taken_in_expr(
+  expr : @ast.Expr,
+  vars : Map[String, Bool]
+) -> Unit {
+  match expr {
+    UnaryOp(AddrOf, Ident(name)) => vars[name] = true
+    UnaryOp(_, e) => collect_addr_taken_in_expr(e, vars)
+    BinaryOp(_, l, r) => {
+      collect_addr_taken_in_expr(l, vars)
+      collect_addr_taken_in_expr(r, vars)
+    }
+    Call(_, args) =>
+      for a in args {
+        collect_addr_taken_in_expr(a, vars)
+      }
+    Assign(l, r) => {
+      collect_addr_taken_in_expr(l, vars)
+      collect_addr_taken_in_expr(r, vars)
+    }
+    IntLiteral(_) => ()
+    CharLiteral(_) => ()
+    StringLiteral(_) => ()
+    Ident(_) => ()
+  }
+}
+
+/// 文の中からアドレスが取られる変数を収集する
+fn collect_addr_taken_in_stmt(
+  stmt : @ast.Stmt,
+  vars : Map[String, Bool]
+) -> Unit {
+  match stmt {
+    Return(Some(e)) => collect_addr_taken_in_expr(e, vars)
+    Return(None) => ()
+    VarDecl(_, _, Some(e)) => collect_addr_taken_in_expr(e, vars)
+    VarDecl(_, _, None) => ()
+    ExprStmt(e) => collect_addr_taken_in_expr(e, vars)
+    Block(stmts) =>
+      for s in stmts {
+        collect_addr_taken_in_stmt(s, vars)
+      }
+    If(c, t, Some(e)) => {
+      collect_addr_taken_in_expr(c, vars)
+      collect_addr_taken_in_stmt(t, vars)
+      collect_addr_taken_in_stmt(e, vars)
+    }
+    If(c, t, None) => {
+      collect_addr_taken_in_expr(c, vars)
+      collect_addr_taken_in_stmt(t, vars)
+    }
+    While(c, b) => {
+      collect_addr_taken_in_expr(c, vars)
+      collect_addr_taken_in_stmt(b, vars)
+    }
+    For(init, cond, upd, body) => {
+      match init {
+        Some(s) => collect_addr_taken_in_stmt(s, vars)
+        None => ()
+      }
+      match cond {
+        Some(e) => collect_addr_taken_in_expr(e, vars)
+        None => ()
+      }
+      match upd {
+        Some(e) => collect_addr_taken_in_expr(e, vars)
+        None => ()
+      }
+      collect_addr_taken_in_stmt(body, vars)
     }
   }
 }
@@ -281,18 +451,24 @@ pub fn emit_expr(
       code.push(op_i32_xor)
     }
     Ident(name) =>
-      match ctx.resolve(name) {
-        Some(index) => {
-          code.push(op_local_get)
-          let bytes = @wasm.encode_uleb128(index)
-          for b in bytes {
-            code.push(b)
-          }
-        }
+      match ctx.stack_vars.get(name) {
+        Some(offset) =>
+          // スタック配置変数: メモリからロード
+          emit_stack_load(offset, code)
         None =>
-          raise CodegenError(
-            "codegen: 未定義の変数 '" + name + "'",
-          )
+          match ctx.resolve(name) {
+            Some(index) => {
+              code.push(op_local_get)
+              let bytes = @wasm.encode_uleb128(index)
+              for b in bytes {
+                code.push(b)
+              }
+            }
+            None =>
+              raise CodegenError(
+                "codegen: 未定義の変数 '" + name + "'",
+              )
+          }
       }
     Call(name, args) =>
       match ctx.resolve_function(name) {
@@ -314,20 +490,42 @@ pub fn emit_expr(
           )
       }
     Assign(Ident(name), value) =>
-      match ctx.resolve(name) {
-        Some(index) => {
-          emit_expr(value, code, ctx)
-          // local.tee: 値をスタックに残しつつ local に書き込む（C の代入は値を返す）
-          code.push(op_local_tee)
-          let bytes = @wasm.encode_uleb128(index)
-          for b in bytes {
+      match ctx.stack_vars.get(name) {
+        Some(offset) => {
+          // スタック配置変数への代入: [addr, value] → i32.store
+          // C の代入は値を返すので、temp local で値を保持する
+          emit_stack_addr(offset, code) // [addr]
+          emit_expr(value, code, ctx) // [addr, value]
+          let temp = ctx.get_temp_local()
+          code.push(op_local_tee) // [addr, value] (value saved to temp)
+          let temp_bytes = @wasm.encode_uleb128(temp)
+          for b in temp_bytes {
+            code.push(b)
+          }
+          emit_i32_store(code) // []
+          // 値を式の結果として残す
+          code.push(op_local_get)
+          let temp_bytes2 = @wasm.encode_uleb128(temp)
+          for b in temp_bytes2 {
             code.push(b)
           }
         }
         None =>
-          raise CodegenError(
-            "codegen: 未定義の変数 '" + name + "'",
-          )
+          match ctx.resolve(name) {
+            Some(index) => {
+              emit_expr(value, code, ctx)
+              // local.tee: 値をスタックに残しつつ local に書き込む（C の代入は値を返す）
+              code.push(op_local_tee)
+              let bytes = @wasm.encode_uleb128(index)
+              for b in bytes {
+                code.push(b)
+              }
+            }
+            None =>
+              raise CodegenError(
+                "codegen: 未定義の変数 '" + name + "'",
+              )
+          }
       }
     Assign(_, _) =>
       raise CodegenError("codegen: 左辺値が変数ではありません（ポインタ代入は Phase 4 で実装）")
@@ -335,101 +533,169 @@ pub fn emit_expr(
       raise CodegenError("codegen: StringLiteral は未実装（Phase 5 で実装）")
     UnaryOp(PreInc, Ident(name)) =>
       // ++x: x = x + 1; 新しい値を返す
-      match ctx.resolve(name) {
-        Some(index) => {
-          code.push(op_local_get)
-          let bytes = @wasm.encode_uleb128(index)
-          for b in bytes {
-            code.push(b)
-          }
+      match ctx.stack_vars.get(name) {
+        Some(offset) => {
+          // スタック変数: load, +1, store, result
+          let temp = ctx.get_temp_local()
+          emit_stack_load(offset, code) // [old_value]
           code.push(op_i32_const)
           code.push(b'\x01')
-          code.push(op_i32_add)
-          code.push(op_local_tee)
-          let bytes2 = @wasm.encode_uleb128(index)
-          for b in bytes2 {
+          code.push(op_i32_add) // [new_value]
+          emit_local_set(temp, code) // [] (new saved to temp)
+          emit_stack_addr(offset, code) // [addr]
+          code.push(op_local_get) // [addr, new_value]
+          for b in @wasm.encode_uleb128(temp) {
+            code.push(b)
+          }
+          emit_i32_store(code) // []
+          code.push(op_local_get) // [new_value]
+          for b in @wasm.encode_uleb128(temp) {
             code.push(b)
           }
         }
         None =>
-          raise CodegenError(
-            "codegen: 未定義の変数 '" + name + "'",
-          )
+          match ctx.resolve(name) {
+            Some(index) => {
+              code.push(op_local_get)
+              let bytes = @wasm.encode_uleb128(index)
+              for b in bytes {
+                code.push(b)
+              }
+              code.push(op_i32_const)
+              code.push(b'\x01')
+              code.push(op_i32_add)
+              code.push(op_local_tee)
+              let bytes2 = @wasm.encode_uleb128(index)
+              for b in bytes2 {
+                code.push(b)
+              }
+            }
+            None =>
+              raise CodegenError(
+                "codegen: 未定義の変数 '" + name + "'",
+              )
+          }
       }
     UnaryOp(PreDec, Ident(name)) =>
       // --x: x = x - 1; 新しい値を返す
-      match ctx.resolve(name) {
-        Some(index) => {
-          code.push(op_local_get)
-          let bytes = @wasm.encode_uleb128(index)
-          for b in bytes {
-            code.push(b)
-          }
+      match ctx.stack_vars.get(name) {
+        Some(offset) => {
+          let temp = ctx.get_temp_local()
+          emit_stack_load(offset, code)
           code.push(op_i32_const)
           code.push(b'\x01')
           code.push(op_i32_sub)
-          code.push(op_local_tee)
-          let bytes2 = @wasm.encode_uleb128(index)
-          for b in bytes2 {
+          emit_local_set(temp, code)
+          emit_stack_addr(offset, code)
+          code.push(op_local_get)
+          for b in @wasm.encode_uleb128(temp) {
+            code.push(b)
+          }
+          emit_i32_store(code)
+          code.push(op_local_get)
+          for b in @wasm.encode_uleb128(temp) {
             code.push(b)
           }
         }
         None =>
-          raise CodegenError(
-            "codegen: 未定義の変数 '" + name + "'",
-          )
+          match ctx.resolve(name) {
+            Some(index) => {
+              code.push(op_local_get)
+              let bytes = @wasm.encode_uleb128(index)
+              for b in bytes {
+                code.push(b)
+              }
+              code.push(op_i32_const)
+              code.push(b'\x01')
+              code.push(op_i32_sub)
+              code.push(op_local_tee)
+              let bytes2 = @wasm.encode_uleb128(index)
+              for b in bytes2 {
+                code.push(b)
+              }
+            }
+            None =>
+              raise CodegenError(
+                "codegen: 未定義の変数 '" + name + "'",
+              )
+          }
       }
     UnaryOp(PostInc, Ident(name)) =>
       // x++: 元の値を返し、x = x + 1 にする
-      match ctx.resolve(name) {
-        Some(index) => {
-          // 元の値をスタックに積む（返り値）
-          code.push(op_local_get)
-          let bytes = @wasm.encode_uleb128(index)
-          for b in bytes {
-            code.push(b)
-          }
-          // x + 1 を計算して local に書き戻す
-          code.push(op_local_get)
-          let bytes2 = @wasm.encode_uleb128(index)
-          for b in bytes2 {
-            code.push(b)
-          }
+      match ctx.stack_vars.get(name) {
+        Some(offset) => {
+          // スタック変数: old_value を返し、new_value を store
+          emit_stack_load(offset, code) // [old_value] — 返り値
+          emit_stack_addr(offset, code) // [old_value, addr]
+          emit_stack_load(offset, code) // [old_value, addr, old_value2]
           code.push(op_i32_const)
           code.push(b'\x01')
-          code.push(op_i32_add)
-          emit_local_set(index, code)
+          code.push(op_i32_add) // [old_value, addr, new_value]
+          emit_i32_store(code) // [old_value]
         }
         None =>
-          raise CodegenError(
-            "codegen: 未定義の変数 '" + name + "'",
-          )
+          match ctx.resolve(name) {
+            Some(index) => {
+              // 元の値をスタックに積む（返り値）
+              code.push(op_local_get)
+              let bytes = @wasm.encode_uleb128(index)
+              for b in bytes {
+                code.push(b)
+              }
+              // x + 1 を計算して local に書き戻す
+              code.push(op_local_get)
+              let bytes2 = @wasm.encode_uleb128(index)
+              for b in bytes2 {
+                code.push(b)
+              }
+              code.push(op_i32_const)
+              code.push(b'\x01')
+              code.push(op_i32_add)
+              emit_local_set(index, code)
+            }
+            None =>
+              raise CodegenError(
+                "codegen: 未定義の変数 '" + name + "'",
+              )
+          }
       }
     UnaryOp(PostDec, Ident(name)) =>
       // x--: 元の値を返し、x = x - 1 にする
-      match ctx.resolve(name) {
-        Some(index) => {
-          // 元の値をスタックに積む（返り値）
-          code.push(op_local_get)
-          let bytes = @wasm.encode_uleb128(index)
-          for b in bytes {
-            code.push(b)
-          }
-          // x - 1 を計算して local に書き戻す
-          code.push(op_local_get)
-          let bytes2 = @wasm.encode_uleb128(index)
-          for b in bytes2 {
-            code.push(b)
-          }
+      match ctx.stack_vars.get(name) {
+        Some(offset) => {
+          emit_stack_load(offset, code) // [old_value] — 返り値
+          emit_stack_addr(offset, code) // [old_value, addr]
+          emit_stack_load(offset, code) // [old_value, addr, old_value2]
           code.push(op_i32_const)
           code.push(b'\x01')
-          code.push(op_i32_sub)
-          emit_local_set(index, code)
+          code.push(op_i32_sub) // [old_value, addr, new_value]
+          emit_i32_store(code) // [old_value]
         }
         None =>
-          raise CodegenError(
-            "codegen: 未定義の変数 '" + name + "'",
-          )
+          match ctx.resolve(name) {
+            Some(index) => {
+              // 元の値をスタックに積む（返り値）
+              code.push(op_local_get)
+              let bytes = @wasm.encode_uleb128(index)
+              for b in bytes {
+                code.push(b)
+              }
+              // x - 1 を計算して local に書き戻す
+              code.push(op_local_get)
+              let bytes2 = @wasm.encode_uleb128(index)
+              for b in bytes2 {
+                code.push(b)
+              }
+              code.push(op_i32_const)
+              code.push(b'\x01')
+              code.push(op_i32_sub)
+              emit_local_set(index, code)
+            }
+            None =>
+              raise CodegenError(
+                "codegen: 未定義の変数 '" + name + "'",
+              )
+          }
       }
     UnaryOp(PreInc, _) =>
       raise CodegenError("codegen: ++のオペランドは変数でなければなりません")
@@ -477,16 +743,29 @@ pub fn emit_stmt(
       emit_epilogue(ctx.frame_size, code)
       code.push(op_return)
     }
-    VarDecl(_type_name, name, init) => {
-      let index = ctx.add_local(name)
-      match init {
-        Some(expr) => {
-          emit_expr(expr, code, ctx)
-          emit_local_set(index, code)
+    VarDecl(_type_name, name, init) =>
+      if ctx.addr_taken.contains(name) {
+        // アドレスが取られる変数: スタックフレーム上に配置
+        let offset = ctx.add_stack_var(name)
+        match init {
+          Some(expr) => {
+            emit_stack_addr(offset, code) // [addr]
+            emit_expr(expr, code, ctx) // [addr, value]
+            emit_i32_store(code) // []
+          }
+          None => ()
         }
-        None => ()
+      } else {
+        // 通常の変数: Wasm local として配置
+        let index = ctx.add_local(name)
+        match init {
+          Some(expr) => {
+            emit_expr(expr, code, ctx)
+            emit_local_set(index, code)
+          }
+          None => ()
+        }
       }
-    }
     ExprStmt(expr) => {
       emit_expr(expr, code, ctx)
       // 式文の結果はスタックから捨てる
@@ -609,7 +888,9 @@ fn compile_function(
   body : @ast.Stmt,
   functions : Map[String, Int]
 ) -> @wasm.FuncBody raise CodegenError {
-  let ctx = CodegenContext::from_params(params, functions~)
+  // 事前スキャン: アドレスが取られる変数を収集
+  let addr_taken = collect_addr_taken_vars(body)
+  let ctx = CodegenContext::from_params(params, functions~, addr_taken~)
   let code : Array[Byte] = []
   emit_stmt(body, code, ctx)
   // 関数末尾に unreachable を追加
