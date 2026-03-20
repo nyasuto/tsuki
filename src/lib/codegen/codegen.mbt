@@ -61,6 +61,9 @@ let op_i32_store : Byte = b'\x36'
 /// スタックポインタのグローバルインデックス
 let sp_global_index : Int = 0
 
+/// ヒープポインタのグローバルインデックス（バンプアロケータ用）
+let hp_global_index : Int = 1
+
 /// メモリサイズ（1ページ = 64KiB = 65536バイト）
 let memory_page_size : Int = 65536
 
@@ -1443,6 +1446,12 @@ pub fn compile_program(
         }
     }
   }
+  // 組み込み malloc 関数の登録（バンプアロケータ）
+  // malloc は全ユーザー関数の後、_start の前に配置する
+  let malloc_func_index = func_index
+  functions["malloc"] = malloc_func_index
+  func_return_types["malloc"] = "void*"
+  func_index += 1
   // 関数が1つもない場合はエラー
   if func_defs.is_empty() {
     raise CodegenError("codegen: プログラムに関数定義がありません")
@@ -1479,6 +1488,65 @@ pub fn compile_program(
       StructDef(_, _) => () // 構造体定義はコード生成不要
     }
   }
+  // malloc 関数の生成（バンプアロケータ）
+  // シグネチャ: (i32) -> (i32)  — size を受け取り、割り当てたアドレスを返す
+  // アルゴリズム:
+  //   1. size を 4 バイトアラインメントに切り上げ
+  //   2. 現在のヒープポインタを返却値として保存
+  //   3. ヒープポインタを size 分進める
+  let malloc_type_index = func_types.length()
+  func_types.push({ params: [@wasm.I32], results: [@wasm.I32] })
+  type_indices.push(malloc_type_index)
+  let malloc_code : Array[Byte] = []
+  // size を 4 バイトアラインメントに切り上げ: size = (size + 3) & ~3
+  // local.get 0 (size)
+  malloc_code.push(op_local_get)
+  for b in @wasm.encode_uleb128(0) {
+    malloc_code.push(b)
+  }
+  // i32.const 3
+  malloc_code.push(op_i32_const)
+  for b in @wasm.encode_sleb128(3) {
+    malloc_code.push(b)
+  }
+  // i32.add
+  malloc_code.push(op_i32_add)
+  // i32.const -4 (0xFFFFFFFC = ~3)
+  malloc_code.push(op_i32_const)
+  for b in @wasm.encode_sleb128(-4) {
+    malloc_code.push(b)
+  }
+  // i32.and
+  malloc_code.push(op_i32_and)
+  // local.set 0 (aligned size)
+  malloc_code.push(op_local_set)
+  for b in @wasm.encode_uleb128(0) {
+    malloc_code.push(b)
+  }
+  // global.get hp (返却値: 割り当て前のアドレス)
+  malloc_code.push(op_global_get)
+  for b in @wasm.encode_uleb128(hp_global_index) {
+    malloc_code.push(b)
+  }
+  // global.get hp
+  malloc_code.push(op_global_get)
+  for b in @wasm.encode_uleb128(hp_global_index) {
+    malloc_code.push(b)
+  }
+  // local.get 0 (aligned size)
+  malloc_code.push(op_local_get)
+  for b in @wasm.encode_uleb128(0) {
+    malloc_code.push(b)
+  }
+  // i32.add (hp + size)
+  malloc_code.push(op_i32_add)
+  // global.set hp (新しいヒープポインタ)
+  malloc_code.push(op_global_set)
+  for b in @wasm.encode_uleb128(hp_global_index) {
+    malloc_code.push(b)
+  }
+  // スタックには old hp が残っている → 返却値
+  func_bodies.push({ locals: [], code: malloc_code })
   // _start ラッパー関数の生成: main() を呼んで proc_exit に渡す
   let start_func_index = func_index // _start の function index
   // _start の型: () -> ()
@@ -1550,14 +1618,22 @@ pub fn compile_program(
   for b in mem_sec {
     result.push(b)
   }
-  // Global Section: スタックポインタ（SP）を mutable i32 として定義
-  // 初期値はメモリの最上位アドレス（1ページ = 65536）
-  // スタックは上位アドレスから下位に向かって成長する
+  // Global Section: スタックポインタ（SP）とヒープポインタ（HP）を定義
+  // SP: 初期値はメモリの最上位アドレス（1ページ = 65536）、下方に成長
+  // HP: 初期値は文字列データ領域の直後（4バイトアラインメント）、上方に成長
   let sp_init_expr = @wasm.make_i32_const_expr(memory_page_size)
+  // ヒープの開始アドレス: 文字列データの直後を4バイトアラインメント
+  let data_end = string_pool.total_size()
+  let heap_start = (data_end + 3) / 4 * 4 // 4バイトアラインメント
+  let hp_init_expr = @wasm.make_i32_const_expr(heap_start)
   let globals : Array[@wasm.GlobalEntry] = [
     {
       global_type: { valtype: @wasm.I32, mutability: @wasm.Mutable },
       init_expr: sp_init_expr,
+    },
+    {
+      global_type: { valtype: @wasm.I32, mutability: @wasm.Mutable },
+      init_expr: hp_init_expr,
     },
   ]
   let global_sec = @wasm.encode_global_section(globals)
