@@ -17,7 +17,7 @@ set -euo pipefail
 
 # --- 設定 ---
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROMPT_FILE="${PROJECT_DIR}/PROMPT.md"
+PROMPT_FILE="${PROJECT_DIR}/prompt.md"
 TASKS_FILE="${PROJECT_DIR}/tasks.md"
 LOG_DIR="${PROJECT_DIR}/.ralph-logs"
 COOLDOWN_SEC=3          # イテレーション間のクールダウン（秒）
@@ -124,11 +124,34 @@ run_iteration() {
 
     # Claude Code 実行
     # --print: 出力のみ（インタラクティブモードなし）
+    # --output-format stream-json: リアルタイムストリーミング
     # --dangerously-skip-permissions: 自律実行を許可
     claude --print \
            --dangerously-skip-permissions \
+           --output-format stream-json \
            "$(cat "$PROMPT_FILE")" \
-           2>&1 | tee -a "$LOG_FILE"
+           2>&1 | while IFS= read -r line; do
+        # stream-json から result テキストを抽出して表示
+        if echo "$line" | python3 -c "
+import sys, json
+try:
+    obj = json.load(sys.stdin)
+    if obj.get('type') == 'assistant' and 'content' in obj:
+        for block in obj['content']:
+            if block.get('type') == 'text':
+                print(block['text'])
+            elif block.get('type') == 'tool_use':
+                print(f\"  [tool] {block.get('name', '?')}\")
+    elif obj.get('type') == 'result':
+        for block in obj.get('content', []):
+            if block.get('type') == 'text':
+                print(block['text'])
+except: pass
+" 2>/dev/null; then
+            :
+        fi
+        echo "$line" >> "$LOG_FILE"
+    done
 
     local exit_code=${PIPESTATUS[0]}
     local end_time
@@ -137,6 +160,19 @@ run_iteration() {
 
     echo "" | tee -a "$LOG_FILE"
     echo -e "${BLUE}[ralph] Iteration #${iteration} 完了（${elapsed}秒, exit=${exit_code}）${NC}" | tee -a "$LOG_FILE"
+
+    # git 状態を表示
+    echo -e "${BLUE}--- git 状態 ---${NC}"
+    git -C "$PROJECT_DIR" log --oneline -5 2>/dev/null || true
+    local uncommitted
+    uncommitted=$(git -C "$PROJECT_DIR" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$uncommitted" -gt 0 ]; then
+        echo -e "${YELLOW}⚠️  未コミットの変更: ${uncommitted} ファイル${NC}"
+        git -C "$PROJECT_DIR" status --short
+    else
+        echo -e "${GREEN}✓ 未コミットの変更なし${NC}"
+    fi
+    echo -e "${BLUE}----------------${NC}"
 
     # 完了チェック：tasks.md に ALL_DONE マーカーがあれば終了
     if grep -q "ALL_PHASES_COMPLETE\|🏁 ALL DONE" "$TASKS_FILE" 2>/dev/null; then
