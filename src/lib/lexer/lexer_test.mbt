@@ -249,3 +249,129 @@ test "scan char literal: unknown escape error" {
     content="Err(\"unknown escape sequence '\\\\q' at line 1, col 1\")",
   )
 }
+
+// --- 識別子とキーワードのテスト ---
+
+test "scan identifier: simple name" {
+  let lexer = @lexer.Lexer::new("foo")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: Ident(\"foo\"), pos: {line: 1, col: 1}})")
+}
+
+test "scan identifier: with underscore prefix" {
+  let lexer = @lexer.Lexer::new("_bar")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Ok({token: Ident(\"_bar\"), pos: {line: 1, col: 1}})",
+  )
+}
+
+test "scan identifier: with digits" {
+  let lexer = @lexer.Lexer::new("x42")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Ok({token: Ident(\"x42\"), pos: {line: 1, col: 1}})",
+  )
+}
+
+test "scan identifier: underscore only" {
+  let lexer = @lexer.Lexer::new("_")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: Ident(\"_\"), pos: {line: 1, col: 1}})")
+}
+
+test "scan identifier: mixed case" {
+  let lexer = @lexer.Lexer::new("myVar_2")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Ok({token: Ident(\"myVar_2\"), pos: {line: 1, col: 1}})",
+  )
+}
+
+test "scan keyword: int" {
+  let lexer = @lexer.Lexer::new("int")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: KwInt, pos: {line: 1, col: 1}})")
+}
+
+test "scan keyword: char" {
+  let lexer = @lexer.Lexer::new("char")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: KwChar, pos: {line: 1, col: 1}})")
+}
+
+test "scan keyword: void" {
+  let lexer = @lexer.Lexer::new("void")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: KwVoid, pos: {line: 1, col: 1}})")
+}
+
+test "scan keyword: struct" {
+  let lexer = @lexer.Lexer::new("struct")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: KwStruct, pos: {line: 1, col: 1}})")
+}
+
+test "scan keyword: if" {
+  let lexer = @lexer.Lexer::new("if")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: KwIf, pos: {line: 1, col: 1}})")
+}
+
+test "scan keyword: else" {
+  let lexer = @lexer.Lexer::new("else")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: KwElse, pos: {line: 1, col: 1}})")
+}
+
+test "scan keyword: while" {
+  let lexer = @lexer.Lexer::new("while")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: KwWhile, pos: {line: 1, col: 1}})")
+}
+
+test "scan keyword: for" {
+  let lexer = @lexer.Lexer::new("for")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: KwFor, pos: {line: 1, col: 1}})")
+}
+
+test "scan keyword: return" {
+  let lexer = @lexer.Lexer::new("return")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: KwReturn, pos: {line: 1, col: 1}})")
+}
+
+test "scan keyword: sizeof" {
+  let lexer = @lexer.Lexer::new("sizeof")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: KwSizeof, pos: {line: 1, col: 1}})")
+}
+
+test "scan identifier: keyword prefix is not keyword" {
+  let lexer = @lexer.Lexer::new("integer")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Ok({token: Ident(\"integer\"), pos: {line: 1, col: 1}})",
+  )
+}
+
+test "scan identifier: keyword suffix is not keyword" {
+  let lexer = @lexer.Lexer::new("returnValue")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Ok({token: Ident(\"returnValue\"), pos: {line: 1, col: 1}})",
+  )
+}
+
+test "scan identifier: stops at non-alnum" {
+  let lexer = @lexer.Lexer::new("foo+bar")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: Ident(\"foo\"), pos: {line: 1, col: 1}})")
+  inspect(lexer.pos, content="3")
+}

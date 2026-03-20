@@ -62,6 +62,55 @@ fn is_digit(ch : Char) -> Bool {
   ch >= '0' && ch <= '9'
 }
 
+/// 文字が識別子の先頭文字として有効かどうか（英字またはアンダースコア）
+fn is_alpha(ch : Char) -> Bool {
+  (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
+}
+
+/// 文字が識別子の構成文字として有効かどうか（英数字またはアンダースコア）
+fn is_alnum(ch : Char) -> Bool {
+  is_alpha(ch) || is_digit(ch)
+}
+
+/// 文字列がキーワードであればそのトークンを返す
+fn lookup_keyword(name : String) -> Token? {
+  match name {
+    "int" => Some(Token::KwInt)
+    "char" => Some(Token::KwChar)
+    "void" => Some(Token::KwVoid)
+    "struct" => Some(Token::KwStruct)
+    "if" => Some(Token::KwIf)
+    "else" => Some(Token::KwElse)
+    "while" => Some(Token::KwWhile)
+    "for" => Some(Token::KwFor)
+    "return" => Some(Token::KwReturn)
+    "sizeof" => Some(Token::KwSizeof)
+    _ => None
+  }
+}
+
+/// 識別子またはキーワードをスキャンする（現在位置が英字または '_' であること前提）
+fn Lexer::scan_ident_or_keyword(self : Lexer) -> Token {
+  let buf = StringBuilder::new()
+  while not(self.is_eof()) {
+    match self.peek() {
+      Some(ch) =>
+        if is_alnum(ch) {
+          buf.write_char(ch)
+          let _ = self.advance()
+        } else {
+          break
+        }
+      None => break
+    }
+  }
+  let name = buf.to_string()
+  match lookup_keyword(name) {
+    Some(kw) => kw
+    None => Token::Ident(name)
+  }
+}
+
 /// エスケープシーケンスを解析する（'\\' の直後の文字を受け取る）
 fn scan_escape(ch : Char) -> Result[Char, String] {
   match ch {
@@ -226,6 +275,9 @@ pub fn Lexer::next_token(self : Lexer) -> Result[LocToken, String] {
           Ok(token) => Ok(LocToken::{ token, pos })
           Err(e) => Err(e)
         }
+      } else if is_alpha(ch) {
+        let token = self.scan_ident_or_keyword()
+        Ok(LocToken::{ token, pos })
       } else {
         Err("unexpected character '\{ch}' at line \{pos.line}, col \{pos.col}")
       }
