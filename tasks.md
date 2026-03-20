@@ -69,7 +69,7 @@
 - [x] Code Section: 関数本体（locals + 命令列）
 
 ### Codegen 実装
-- [ ] 式の Codegen: IntLit → `i32.const`, BinaryOp → 対応する `i32.xxx` 命令
+- [x] 式の Codegen: IntLit → `i32.const`, BinaryOp → 対応する `i32.xxx` 命令
 - [ ] ローカル変数: Wasm locals へのマッピング（変数名 → local index）
 - [ ] 関数呼び出し: `call` 命令（関数名 → function index）
 - [ ] return 文: Codegen + `end`
