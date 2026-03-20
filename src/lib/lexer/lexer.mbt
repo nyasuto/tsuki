@@ -62,6 +62,130 @@ fn is_digit(ch : Char) -> Bool {
   ch >= '0' && ch <= '9'
 }
 
+/// エスケープシーケンスを解析する（'\\' の直後の文字を受け取る）
+fn scan_escape(ch : Char) -> Result[Char, String] {
+  match ch {
+    'n' => Ok('\n')
+    't' => Ok('\t')
+    '\\' => Ok('\\')
+    '0' => Ok('\u0000')
+    '\'' => Ok('\'')
+    '"' => Ok('"')
+    _ => Err("unknown escape sequence '\\\{ch}'")
+  }
+}
+
+/// 文字リテラルをスキャンする（現在位置が '\'' であること前提）
+fn Lexer::scan_char_lit(self : Lexer) -> Result[Token, String] {
+  let start_pos = self.current_pos()
+  let _ = self.advance() // 開始の '\'' を消費
+  match self.peek() {
+    None =>
+      Err(
+        "unterminated character literal at line \{start_pos.line}, col \{start_pos.col}",
+      )
+    Some('\'') =>
+      Err(
+        "empty character literal at line \{start_pos.line}, col \{start_pos.col}",
+      )
+    Some('\\') => {
+      let _ = self.advance() // '\\' を消費
+      match self.peek() {
+        None =>
+          Err(
+            "unterminated escape in character literal at line \{start_pos.line}, col \{start_pos.col}",
+          )
+        Some(esc_ch) => {
+          let _ = self.advance() // エスケープ文字を消費
+          match scan_escape(esc_ch) {
+            Err(e) => Err("\{e} at line \{start_pos.line}, col \{start_pos.col}")
+            Ok(ch) =>
+              // 閉じの '\'' を確認
+              match self.peek() {
+                Some('\'') => {
+                  let _ = self.advance()
+                  Ok(Token::CharLit(ch))
+                }
+                Some(c) =>
+                  Err(
+                    "expected closing quote, got '\{c}' at line \{self.line}, col \{self.col}",
+                  )
+                None =>
+                  Err(
+                    "unterminated character literal at line \{start_pos.line}, col \{start_pos.col}",
+                  )
+              }
+          }
+        }
+      }
+    }
+    Some(ch) => {
+      let _ = self.advance() // 文字を消費
+      // 閉じの '\'' を確認
+      match self.peek() {
+        Some('\'') => {
+          let _ = self.advance()
+          Ok(Token::CharLit(ch))
+        }
+        Some(c) =>
+          Err(
+            "expected closing quote, got '\{c}' at line \{self.line}, col \{self.col}",
+          )
+        None =>
+          Err(
+            "unterminated character literal at line \{start_pos.line}, col \{start_pos.col}",
+          )
+      }
+    }
+  }
+}
+
+/// 文字列リテラルをスキャンする（現在位置が '"' であること前提）
+fn Lexer::scan_string_lit(self : Lexer) -> Result[Token, String] {
+  let start_pos = self.current_pos()
+  let _ = self.advance() // 開始の '"' を消費
+  let buf = StringBuilder::new()
+  while true {
+    match self.peek() {
+      None =>
+        return Err(
+          "unterminated string literal at line \{start_pos.line}, col \{start_pos.col}",
+        )
+      Some('"') => {
+        let _ = self.advance() // 閉じの '"' を消費
+        return Ok(Token::StringLit(buf.to_string()))
+      }
+      Some('\\') => {
+        let _ = self.advance() // '\\' を消費
+        match self.peek() {
+          None =>
+            return Err(
+              "unterminated escape in string literal at line \{start_pos.line}, col \{start_pos.col}",
+            )
+          Some(esc_ch) => {
+            let _ = self.advance() // エスケープ文字を消費
+            match scan_escape(esc_ch) {
+              Err(e) =>
+                return Err(
+                  "\{e} at line \{start_pos.line}, col \{start_pos.col}",
+                )
+              Ok(ch) => buf.write_char(ch)
+            }
+          }
+        }
+      }
+      Some(ch) => {
+        let _ = self.advance()
+        buf.write_char(ch)
+      }
+    }
+  }
+  // ここには到達しない
+  Err(
+    "unterminated string literal at line \{start_pos.line}, col \{start_pos.col}",
+  )
+}
+
 /// 整数リテラルをスキャンする（現在位置が数字であること前提）
 fn Lexer::scan_int_lit(self : Lexer) -> Token {
   let mut value = 0
@@ -92,6 +216,16 @@ pub fn Lexer::next_token(self : Lexer) -> Result[LocToken, String] {
       if is_digit(ch) {
         let token = self.scan_int_lit()
         Ok(LocToken::{ token, pos })
+      } else if ch == '\'' {
+        match self.scan_char_lit() {
+          Ok(token) => Ok(LocToken::{ token, pos })
+          Err(e) => Err(e)
+        }
+      } else if ch == '"' {
+        match self.scan_string_lit() {
+          Ok(token) => Ok(LocToken::{ token, pos })
+          Err(e) => Err(e)
+        }
       } else {
         Err("unexpected character '\{ch}' at line \{pos.line}, col \{pos.col}")
       }

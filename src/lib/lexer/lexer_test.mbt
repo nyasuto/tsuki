@@ -117,3 +117,135 @@ test "tokenize: sequence of integer literals separated by non-digits" {
     content="Ok([{token: IntLit(42), pos: {line: 1, col: 1}}, {token: Eof, pos: {line: 1, col: 3}}])",
   )
 }
+
+// --- 文字リテラルのテスト ---
+
+test "scan char literal: simple character" {
+  let lexer = @lexer.Lexer::new("'a'")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: CharLit('a'), pos: {line: 1, col: 1}})")
+}
+
+test "scan char literal: digit character" {
+  let lexer = @lexer.Lexer::new("'0'")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: CharLit('0'), pos: {line: 1, col: 1}})")
+}
+
+test "scan char literal: escape newline" {
+  let lexer = @lexer.Lexer::new("'\\n'")
+  let result = lexer.next_token()
+  let expected =
+    #|Ok({token: CharLit('\n'), pos: {line: 1, col: 1}})
+  inspect(result, content=expected)
+}
+
+test "scan char literal: escape tab" {
+  let lexer = @lexer.Lexer::new("'\\t'")
+  let result = lexer.next_token()
+  let expected =
+    #|Ok({token: CharLit('\t'), pos: {line: 1, col: 1}})
+  inspect(result, content=expected)
+}
+
+test "scan char literal: escape backslash" {
+  let lexer = @lexer.Lexer::new("'\\\\'")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: CharLit('\\\\'), pos: {line: 1, col: 1}})")
+}
+
+test "scan char literal: escape null" {
+  let lexer = @lexer.Lexer::new("'\\0'")
+  let result = lexer.next_token()
+  let expected =
+    #|Ok({token: CharLit('\u{00}'), pos: {line: 1, col: 1}})
+  inspect(result, content=expected)
+}
+
+test "scan char literal: empty literal error" {
+  let lexer = @lexer.Lexer::new("''")
+  let result = lexer.next_token()
+  inspect(result, content="Err(\"empty character literal at line 1, col 1\")")
+}
+
+test "scan char literal: unterminated error" {
+  let lexer = @lexer.Lexer::new("'a")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Err(\"unterminated character literal at line 1, col 1\")",
+  )
+}
+
+// --- 文字列リテラルのテスト ---
+
+test "scan string literal: simple string" {
+  let lexer = @lexer.Lexer::new("\"hello\"")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Ok({token: StringLit(\"hello\"), pos: {line: 1, col: 1}})",
+  )
+}
+
+test "scan string literal: empty string" {
+  let lexer = @lexer.Lexer::new("\"\"")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Ok({token: StringLit(\"\"), pos: {line: 1, col: 1}})",
+  )
+}
+
+test "scan string literal: with escape sequences" {
+  let lexer = @lexer.Lexer::new("\"hello\\nworld\"")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Ok({token: StringLit(\"hello\\nworld\"), pos: {line: 1, col: 1}})",
+  )
+}
+
+test "scan string literal: multiple escapes" {
+  let lexer = @lexer.Lexer::new("\"a\\tb\\\\c\"")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Ok({token: StringLit(\"a\\tb\\\\c\"), pos: {line: 1, col: 1}})",
+  )
+}
+
+test "scan string literal: escape null in string" {
+  let lexer = @lexer.Lexer::new("\"a\\0b\"")
+  let result = lexer.next_token()
+  let expected =
+    #|Ok({token: StringLit("a\u{00}b"), pos: {line: 1, col: 1}})
+  inspect(result, content=expected)
+}
+
+test "scan string literal: unterminated error" {
+  let lexer = @lexer.Lexer::new("\"hello")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Err(\"unterminated string literal at line 1, col 1\")",
+  )
+}
+
+test "scan string literal: unknown escape error" {
+  let lexer = @lexer.Lexer::new("\"\\q\"")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Err(\"unknown escape sequence '\\\\q' at line 1, col 1\")",
+  )
+}
+
+test "scan char literal: unknown escape error" {
+  let lexer = @lexer.Lexer::new("'\\q'")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Err(\"unknown escape sequence '\\\\q' at line 1, col 1\")",
+  )
+}
