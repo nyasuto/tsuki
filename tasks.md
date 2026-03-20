@@ -103,7 +103,7 @@
 - [x] 論理演算子（&&, ||）の AST ノード確認
 
 ### Codegen 拡張
-- [ ] 比較演算: `i32.eq`, `i32.ne`, `i32.lt_s`, `i32.gt_s`, `i32.le_s`, `i32.ge_s`
+- [x] 比較演算: `i32.eq`, `i32.ne`, `i32.lt_s`, `i32.gt_s`, `i32.le_s`, `i32.ge_s`
 - [ ] if/else → Wasm `if ... else ... end` ブロック
 - [ ] while → Wasm `block` + `loop` + `br_if` + `br`
 - [ ] for → while への AST レベル変換（desugar）
