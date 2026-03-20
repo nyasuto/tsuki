@@ -56,7 +56,7 @@
 - [x] 文のパース: return, 変数宣言（int x = expr;）, 代入, 式文, ブロック
 - [x] 関数定義のパース: 戻り値型 + 名前 + パラメータリスト + ブロック
 - [x] プログラム全体のパース: 関数定義の列
-- [ ] Parser のスナップショットテスト: `"int main() { return 42; }"` → AST
+- [x] Parser のスナップショットテスト: `"int main() { return 42; }"` → AST
 
 ### Wasm バイナリエンコーダ
 - [ ] LEB128（unsigned / signed）エンコーディング実装 + テスト
