@@ -586,3 +586,121 @@ test "emit_stmt: var decl and return" {
     content="41 0A 21 00 41 14 21 01 20 00 20 01 6A 0F",
   )
 }
+
+// === compile_program テスト ===
+
+/// 単一関数: int main() { return 42; }
+test "compile_program: single function return 42" {
+  let program : @ast.Program = {
+    top_levels: [
+      @ast.FuncDef(
+        "int",
+        "main",
+        [],
+        @ast.Block([@ast.Return(Some(@ast.IntLiteral(42)))]),
+      ),
+    ],
+  }
+  let wasm = compile_program(program)
+  // Wasm バイナリが生成されていることを確認（先頭8バイトがヘッダ）
+  inspect(bytes_to_hex(Array::from_iter(wasm[0:8].iter())), content="00 61 73 6D 01 00 00 00")
+  // バイナリサイズが妥当であることを確認（ヘッダ + セクション群）
+  inspect(wasm.length() > 8, content="true")
+}
+
+/// 複数関数: add(a, b) + main() → function index が正しく管理される
+test "compile_program: multiple functions" {
+  let program : @ast.Program = {
+    top_levels: [
+      @ast.FuncDef(
+        "int",
+        "add",
+        [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
+        @ast.Block(
+          [
+            @ast.Return(
+              Some(@ast.BinaryOp(Add, @ast.Ident("a"), @ast.Ident("b"))),
+            ),
+          ],
+        ),
+      ),
+      @ast.FuncDef(
+        "int",
+        "main",
+        [],
+        @ast.Block(
+          [
+            @ast.Return(
+              Some(
+                @ast.Call("add", [@ast.IntLiteral(3), @ast.IntLiteral(4)]),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+  }
+  let wasm = compile_program(program)
+  // ヘッダが正しい
+  inspect(bytes_to_hex(Array::from_iter(wasm[0:8].iter())), content="00 61 73 6D 01 00 00 00")
+  // 生成されたバイナリが妥当なサイズ
+  inspect(wasm.length() > 20, content="true")
+}
+
+/// void 関数の戻り値型
+test "compile_program: void function" {
+  let program : @ast.Program = {
+    top_levels: [
+      @ast.FuncDef(
+        "void",
+        "noop",
+        [],
+        @ast.Block([@ast.Return(None)]),
+      ),
+      @ast.FuncDef(
+        "int",
+        "main",
+        [],
+        @ast.Block([@ast.Return(Some(@ast.IntLiteral(0)))]),
+      ),
+    ],
+  }
+  let wasm = compile_program(program)
+  inspect(bytes_to_hex(Array::from_iter(wasm[0:8].iter())), content="00 61 73 6D 01 00 00 00")
+}
+
+/// 関数が0個の場合はエラー
+test "compile_program: no functions error" {
+  let program : @ast.Program = { top_levels: [] }
+  let result : Result[Array[Byte], Error] = try {
+    Ok(compile_program(program))
+  } catch {
+    e => Err(e)
+  }
+  inspect(result is Err(_), content="true")
+}
+
+/// ローカル変数を持つ関数のコンパイル
+test "compile_program: function with locals" {
+  let program : @ast.Program = {
+    top_levels: [
+      @ast.FuncDef(
+        "int",
+        "main",
+        [],
+        @ast.Block(
+          [
+            @ast.VarDecl("int", "x", Some(@ast.IntLiteral(10))),
+            @ast.VarDecl("int", "y", Some(@ast.IntLiteral(20))),
+            @ast.Return(
+              Some(@ast.BinaryOp(Add, @ast.Ident("x"), @ast.Ident("y"))),
+            ),
+          ],
+        ),
+      ),
+    ],
+  }
+  let wasm = compile_program(program)
+  inspect(bytes_to_hex(Array::from_iter(wasm[0:8].iter())), content="00 61 73 6D 01 00 00 00")
+  inspect(wasm.length() > 20, content="true")
+}

@@ -74,7 +74,7 @@
 - [x] 関数呼び出し: `call` 命令（関数名 → function index）
 - [x] return 文: Codegen + `end`
 - [x] 変数宣言と代入: `local.set` / `local.get`
-- [ ] 複数関数のコンパイル: function index の管理
+- [x] 複数関数のコンパイル: function index の管理
 - [ ] .wasm バイナリファイルへの書き出し
 
 ### Phase 2 統合テスト

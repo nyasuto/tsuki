@@ -271,3 +271,146 @@ pub fn emit_stmt(
       raise CodegenError("codegen: For は未実装（Phase 3 で実装）")
   }
 }
+
+/// C の型名を Wasm の ValType に変換する
+/// int, char → I32、void → None（戻り値なし）
+fn ctype_to_valtype(type_name : String) -> @wasm.ValType? {
+  match type_name {
+    "int" => Some(@wasm.I32)
+    "char" => Some(@wasm.I32)
+    "void" => None
+    _ => Some(@wasm.I32) // 未知の型はとりあえず i32（Phase 4 で拡張）
+  }
+}
+
+/// 関数定義から Wasm の FuncType（シグネチャ）を生成する
+fn func_def_to_functype(
+  return_type : String,
+  params : Array[@ast.Param]
+) -> @wasm.FuncType {
+  let param_types : Array[@wasm.ValType] = Array::new(capacity=params.length())
+  for _param in params {
+    // Phase 2 ではすべてのパラメータ型は i32
+    param_types.push(@wasm.I32)
+  }
+  let result_types : Array[@wasm.ValType] = match ctype_to_valtype(return_type) {
+    Some(vt) => [vt]
+    None => []
+  }
+  { params: param_types, results: result_types }
+}
+
+/// 単一の関数定義をコンパイルし、FuncBody を返す
+/// params_count はパラメータの数（locals からは除外される）
+fn compile_function(
+  params : Array[@ast.Param],
+  body : @ast.Stmt,
+  functions : Map[String, Int]
+) -> @wasm.FuncBody raise CodegenError {
+  let ctx = CodegenContext::from_params(params, functions~)
+  let code : Array[Byte] = []
+  emit_stmt(body, code, ctx)
+  // パラメータ以外に追加されたローカル変数の数を計算
+  let extra_locals = ctx.next_index - params.length()
+  let locals : Array[@wasm.LocalDecl] = if extra_locals > 0 {
+    [{ count: extra_locals, valtype: @wasm.I32 }]
+  } else {
+    []
+  }
+  { locals, code }
+}
+
+/// Program 全体をコンパイルして完全な Wasm バイナリ（Array[Byte]）を生成する
+///
+/// 処理の流れ:
+/// 1. 全関数定義を走査して function index を割り当て
+/// 2. 各関数の FuncType（シグネチャ）を収集
+/// 3. 各関数本体をコンパイルして FuncBody を生成
+/// 4. 全セクションを組み立てて .wasm バイナリを返す
+pub fn compile_program(
+  program : @ast.Program
+) -> Array[Byte] raise CodegenError {
+  // 第1パス: 関数名 → function index のマッピングを構築
+  let functions : Map[String, Int] = {}
+  let func_defs : Array[(@ast.TopLevel, Int)] = []
+  let mut func_index = 0
+  for top_level in program.top_levels {
+    match top_level {
+      FuncDef(_, name, _, _) => {
+        functions[name] = func_index
+        func_defs.push((top_level, func_index))
+        func_index += 1
+      }
+      GlobalVarDecl(_, _, _) =>
+        raise CodegenError("codegen: グローバル変数は未実装（Phase 4 で実装）")
+    }
+  }
+  // 関数が1つもない場合はエラー
+  if func_defs.is_empty() {
+    raise CodegenError("codegen: プログラムに関数定義がありません")
+  }
+  // 第2パス: FuncType と FuncBody を収集
+  let func_types : Array[@wasm.FuncType] = Array::new(capacity=func_defs.length())
+  let func_bodies : Array[@wasm.FuncBody] = Array::new(capacity=func_defs.length())
+  let type_indices : Array[Int] = Array::new(capacity=func_defs.length())
+  for i, item in func_defs {
+    let (top_level, _) = item
+    match top_level {
+      FuncDef(return_type, _, params, body) => {
+        let ft = func_def_to_functype(return_type, params)
+        func_types.push(ft)
+        type_indices.push(i) // type index = function index（1対1対応）
+        let fb = compile_function(params, body, functions)
+        func_bodies.push(fb)
+      }
+      GlobalVarDecl(_, _, _) => () // 上のパスで既にエラーにしているため到達しない
+    }
+  }
+  // エクスポートの構築: "_start" 関数があればそれをエクスポート、なければ "main" を探す
+  let exports : Array[@wasm.ExportEntry] = Array::new(capacity=2)
+  // main 関数をエクスポート（wasmtime は "_start" を探す）
+  match functions.get("main") {
+    Some(main_index) =>
+      exports.push(
+        { name: "_start", kind: @wasm.ExportFunc, index: main_index },
+      )
+    None => ()
+  }
+  // memory もエクスポート
+  exports.push(
+    { name: "memory", kind: @wasm.ExportMem, index: 0 },
+  )
+  // Wasm モジュールの組み立て
+  let result : Array[Byte] = Array::new(capacity=256)
+  // ヘッダ
+  let header = @wasm.encode_module_header()
+  for b in header {
+    result.push(b)
+  }
+  // Type Section
+  let type_sec = @wasm.encode_type_section(func_types)
+  for b in type_sec {
+    result.push(b)
+  }
+  // Function Section
+  let func_sec = @wasm.encode_function_section(type_indices)
+  for b in func_sec {
+    result.push(b)
+  }
+  // Memory Section（1ページ = 64KiB）
+  let mem_sec = @wasm.encode_memory_section([@wasm.LimitsMin(1)])
+  for b in mem_sec {
+    result.push(b)
+  }
+  // Export Section
+  let export_sec = @wasm.encode_export_section(exports)
+  for b in export_sec {
+    result.push(b)
+  }
+  // Code Section
+  let code_sec = @wasm.encode_code_section(func_bodies)
+  for b in code_sec {
+    result.push(b)
+  }
+  result
+}
