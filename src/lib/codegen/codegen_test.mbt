@@ -1290,3 +1290,97 @@ test "emit_expr: addr_of non-variable raises error" {
   }
   inspect(result is Err(_), content="true")
 }
+
+/// ポインタ演算のテスト用コンテキスト作成ヘルパー
+/// int* 型の変数 "p" を local index 0 に登録する
+fn ptr_ctx() -> CodegenContext {
+  let ctx = CodegenContext::new()
+  let _ = ctx.add_local("p")
+  ctx.var_types["p"] = @ast.CType::Ptr(@ast.CType::Int)
+  ctx
+}
+
+/// ptr + n: int* + int → ptr + n * 4
+/// p + 3 → local.get 0; i32.const 3; i32.const 4; i32.mul; i32.add
+test "emit_expr: pointer add scales by sizeof(int)" {
+  let code : Array[Byte] = []
+  let ctx = ptr_ctx()
+  emit_expr(
+    @ast.BinaryOp(Add, @ast.Ident("p"), @ast.IntLiteral(3)),
+    code,
+    ctx,
+  )
+  // local.get 0 (20 00), i32.const 3 (41 03), i32.const 4 (41 04), i32.mul (6C), i32.add (6A)
+  inspect(bytes_to_hex(code), content="20 00 41 03 41 04 6C 6A")
+}
+
+/// n + ptr: int + int* → n * 4 + ptr
+/// 3 + p → i32.const 3; i32.const 4; i32.mul; local.get 0; i32.add
+test "emit_expr: int + pointer scales by sizeof(int)" {
+  let code : Array[Byte] = []
+  let ctx = ptr_ctx()
+  emit_expr(
+    @ast.BinaryOp(Add, @ast.IntLiteral(3), @ast.Ident("p")),
+    code,
+    ctx,
+  )
+  // i32.const 3 (41 03), i32.const 4 (41 04), i32.mul (6C), local.get 0 (20 00), i32.add (6A)
+  inspect(bytes_to_hex(code), content="41 03 41 04 6C 20 00 6A")
+}
+
+/// ptr - n: int* - int → ptr - n * 4
+/// p - 2 → local.get 0; i32.const 2; i32.const 4; i32.mul; i32.sub
+test "emit_expr: pointer sub scales by sizeof(int)" {
+  let code : Array[Byte] = []
+  let ctx = ptr_ctx()
+  emit_expr(
+    @ast.BinaryOp(Sub, @ast.Ident("p"), @ast.IntLiteral(2)),
+    code,
+    ctx,
+  )
+  // local.get 0 (20 00), i32.const 2 (41 02), i32.const 4 (41 04), i32.mul (6C), i32.sub (6B)
+  inspect(bytes_to_hex(code), content="20 00 41 02 41 04 6C 6B")
+}
+
+/// ptr - ptr: int* - int* → (ptr1 - ptr2) / sizeof(int)
+test "emit_expr: pointer diff divides by sizeof(int)" {
+  let code : Array[Byte] = []
+  let ctx = CodegenContext::new()
+  let _ = ctx.add_local("p")
+  let _ = ctx.add_local("q")
+  ctx.var_types["p"] = @ast.CType::Ptr(@ast.CType::Int)
+  ctx.var_types["q"] = @ast.CType::Ptr(@ast.CType::Int)
+  emit_expr(
+    @ast.BinaryOp(Sub, @ast.Ident("p"), @ast.Ident("q")),
+    code,
+    ctx,
+  )
+  // local.get 0 (20 00), local.get 1 (20 01), i32.sub (6B), i32.const 4 (41 04), i32.div_s (6D)
+  inspect(bytes_to_hex(code), content="20 00 20 01 6B 41 04 6D")
+}
+
+/// char* + n: スケーリングなし（sizeof(char) == 1）
+test "emit_expr: char pointer add no scaling" {
+  let code : Array[Byte] = []
+  let ctx = CodegenContext::new()
+  let _ = ctx.add_local("cp")
+  ctx.var_types["cp"] = @ast.CType::Ptr(@ast.CType::Char)
+  emit_expr(
+    @ast.BinaryOp(Add, @ast.Ident("cp"), @ast.IntLiteral(5)),
+    code,
+    ctx,
+  )
+  // local.get 0 (20 00), i32.const 5 (41 05), i32.add (6A) — sizeof(char)=1 なのでスケーリングなし
+  inspect(bytes_to_hex(code), content="20 00 41 05 6A")
+}
+
+/// 型情報なし（非ポインタ）の加算: 通常の i32.add
+test "emit_expr: non-pointer add unchanged" {
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.BinaryOp(Add, @ast.IntLiteral(3), @ast.IntLiteral(4)),
+    code,
+    empty_ctx(),
+  )
+  inspect(bytes_to_hex(code), content="41 03 41 04 6A")
+}

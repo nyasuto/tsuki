@@ -82,6 +82,8 @@ pub struct CodegenContext {
   addr_taken : Map[String, Bool]
   /// 一時変数の Wasm local index（スタック変数の代入時に使用）
   mut temp_local : Int?
+  /// 変数名 → 解決済み型のマッピング（ポインタ演算のスケーリングに使用）
+  var_types : Map[String, @ast.CType]
 }
 
 /// 新しい CodegenContext を作成する
@@ -94,6 +96,7 @@ pub fn CodegenContext::new() -> CodegenContext {
     stack_vars: {},
     addr_taken: {},
     temp_local: None,
+    var_types: {},
   }
 }
 
@@ -112,10 +115,16 @@ pub fn CodegenContext::from_params(
     stack_vars: {},
     addr_taken,
     temp_local: None,
+    var_types: {},
   }
   for param in params {
     ctx.locals[param.name] = ctx.next_index
     ctx.next_index += 1
+    // パラメータの型を解決して記録する（ポインタ演算のスケーリングに必要）
+    match @sema.resolve_type_name(param.type_name) {
+      Ok(ty) => ctx.var_types[param.name] = ty
+      Err(_) => ()
+    }
   }
   ctx
 }
@@ -351,6 +360,77 @@ fn collect_addr_taken_in_stmt(
   }
 }
 
+/// 型のサイズをバイト単位で返す（ポインタ演算のスケーリング用）
+/// 構造体のサイズは現時点では未対応（Phase 4 の構造体タスクで拡張）
+fn size_of_ctype(ty : @ast.CType) -> Int {
+  match ty {
+    Int => 4
+    Char => 1
+    Void => 0
+    Ptr(_) => 4
+    Struct(_) => 4 // TODO: 構造体タスクで正確なサイズに修正
+    Array(elem, count) => size_of_ctype(elem) * count
+  }
+}
+
+/// 式の型をコンテキストから推論する（ポインタ演算の検出用）
+/// 完全な型推論ではなく、ポインタ型かどうかを判定するのに十分なレベル
+fn infer_expr_type(
+  expr : @ast.Expr,
+  ctx : CodegenContext
+) -> @ast.CType? {
+  match expr {
+    IntLiteral(_) => Some(@ast.CType::Int)
+    CharLiteral(_) => Some(@ast.CType::Char)
+    StringLiteral(_) => Some(@ast.CType::Ptr(@ast.CType::Char))
+    Ident(name) => ctx.var_types.get(name)
+    UnaryOp(AddrOf, Ident(name)) =>
+      match ctx.var_types.get(name) {
+        Some(ty) => Some(@ast.CType::Ptr(ty))
+        None => None
+      }
+    UnaryOp(Deref, e) =>
+      match infer_expr_type(e, ctx) {
+        Some(Ptr(inner)) => Some(inner)
+        Some(Int) => None
+        Some(Char) => None
+        Some(Void) => None
+        Some(Struct(_)) => None
+        Some(Array(_, _)) => None
+        None => None
+      }
+    UnaryOp(AddrOf, _) => None
+    UnaryOp(Neg, _) => Some(@ast.CType::Int)
+    UnaryOp(LogNot, _) => Some(@ast.CType::Int)
+    UnaryOp(BitNot, _) => Some(@ast.CType::Int)
+    UnaryOp(PreInc, e) => infer_expr_type(e, ctx)
+    UnaryOp(PreDec, e) => infer_expr_type(e, ctx)
+    UnaryOp(PostInc, e) => infer_expr_type(e, ctx)
+    UnaryOp(PostDec, e) => infer_expr_type(e, ctx)
+    BinaryOp(Add, lhs, rhs) => {
+      let lty = infer_expr_type(lhs, ctx)
+      let rty = infer_expr_type(rhs, ctx)
+      match (lty, rty) {
+        (Some(Ptr(_)) as p, _) => p
+        (_, Some(Ptr(_)) as p) => p
+        _ => Some(@ast.CType::Int)
+      }
+    }
+    BinaryOp(Sub, lhs, rhs) => {
+      let lty = infer_expr_type(lhs, ctx)
+      let rty = infer_expr_type(rhs, ctx)
+      match (lty, rty) {
+        (Some(Ptr(_)), Some(Ptr(_))) => Some(@ast.CType::Int)
+        (Some(Ptr(_)) as p, _) => p
+        _ => Some(@ast.CType::Int)
+      }
+    }
+    BinaryOp(_, _, _) => Some(@ast.CType::Int)
+    Call(_, _) => None
+    Assign(_, _) => None
+  }
+}
+
 /// 二項演算子を対応する Wasm オペコードに変換する
 fn binop_to_opcode(op : @ast.BinOp) -> Byte {
   match op {
@@ -422,6 +502,88 @@ pub fn emit_expr(
       code.push(op_else)
       emit_expr(rhs, code, ctx)
       code.push(op_end)
+    }
+    BinaryOp(Add, lhs, rhs) => {
+      // ポインタ演算チェック: ptr + n → ptr + n * sizeof(*ptr)
+      let lty = infer_expr_type(lhs, ctx)
+      let rty = infer_expr_type(rhs, ctx)
+      match (lty, rty) {
+        (Some(Ptr(elem)), _) => {
+          // ptr + n: ポインタ側を評価し、整数側を sizeof でスケーリング
+          emit_expr(lhs, code, ctx)
+          emit_expr(rhs, code, ctx)
+          let sz = size_of_ctype(elem)
+          if sz != 1 {
+            code.push(op_i32_const)
+            for b in @wasm.encode_sleb128(sz) {
+              code.push(b)
+            }
+            code.push(op_i32_mul)
+          }
+          code.push(op_i32_add)
+        }
+        (_, Some(Ptr(elem))) => {
+          // n + ptr: 整数側を sizeof でスケーリングしてからポインタ側を加算
+          emit_expr(lhs, code, ctx)
+          let sz = size_of_ctype(elem)
+          if sz != 1 {
+            code.push(op_i32_const)
+            for b in @wasm.encode_sleb128(sz) {
+              code.push(b)
+            }
+            code.push(op_i32_mul)
+          }
+          emit_expr(rhs, code, ctx)
+          code.push(op_i32_add)
+        }
+        _ => {
+          // 通常の整数加算
+          emit_expr(lhs, code, ctx)
+          emit_expr(rhs, code, ctx)
+          code.push(op_i32_add)
+        }
+      }
+    }
+    BinaryOp(Sub, lhs, rhs) => {
+      // ポインタ演算チェック
+      let lty = infer_expr_type(lhs, ctx)
+      let rty = infer_expr_type(rhs, ctx)
+      match (lty, rty) {
+        (Some(Ptr(elem)), Some(Ptr(_))) => {
+          // ptr - ptr → (ptr1 - ptr2) / sizeof(elem)：要素数の差を返す
+          emit_expr(lhs, code, ctx)
+          emit_expr(rhs, code, ctx)
+          code.push(op_i32_sub)
+          let sz = size_of_ctype(elem)
+          if sz != 1 {
+            code.push(op_i32_const)
+            for b in @wasm.encode_sleb128(sz) {
+              code.push(b)
+            }
+            code.push(op_i32_div_s)
+          }
+        }
+        (Some(Ptr(elem)), _) => {
+          // ptr - n → ptr - n * sizeof(elem)
+          emit_expr(lhs, code, ctx)
+          emit_expr(rhs, code, ctx)
+          let sz = size_of_ctype(elem)
+          if sz != 1 {
+            code.push(op_i32_const)
+            for b in @wasm.encode_sleb128(sz) {
+              code.push(b)
+            }
+            code.push(op_i32_mul)
+          }
+          code.push(op_i32_sub)
+        }
+        _ => {
+          // 通常の整数減算
+          emit_expr(lhs, code, ctx)
+          emit_expr(rhs, code, ctx)
+          code.push(op_i32_sub)
+        }
+      }
     }
     BinaryOp(op, lhs, rhs) => {
       emit_expr(lhs, code, ctx)
@@ -775,7 +937,12 @@ pub fn emit_stmt(
       emit_epilogue(ctx.frame_size, code)
       code.push(op_return)
     }
-    VarDecl(_type_name, name, init) =>
+    VarDecl(type_name, name, init) => {
+      // 変数の型を記録する（ポインタ演算のスケーリングに必要）
+      match @sema.resolve_type_name(type_name) {
+        Ok(ty) => ctx.var_types[name] = ty
+        Err(_) => ()
+      }
       if ctx.addr_taken.contains(name) {
         // アドレスが取られる変数: スタックフレーム上に配置
         let offset = ctx.add_stack_var(name)
@@ -798,6 +965,7 @@ pub fn emit_stmt(
           None => ()
         }
       }
+    }
     ExprStmt(expr) => {
       emit_expr(expr, code, ctx)
       // 式文の結果はスタックから捨てる
