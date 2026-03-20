@@ -50,6 +50,16 @@ let blocktype_i32 : Byte = b'\x7F'
 /// unreachable 命令: 到達不能コードをバリデータに通知する
 let op_unreachable : Byte = b'\x00'
 
+/// グローバル変数命令のオペコード
+let op_global_get : Byte = b'\x23'
+let op_global_set : Byte = b'\x24'
+
+/// スタックポインタのグローバルインデックス
+let sp_global_index : Int = 0
+
+/// メモリサイズ（1ページ = 64KiB = 65536バイト）
+let memory_page_size : Int = 65536
+
 /// コード生成コンテキスト: 変数名 → Wasm local index のマッピングを管理する
 pub struct CodegenContext {
   /// 変数名 → local index のマッピング
@@ -675,6 +685,20 @@ pub fn compile_program(
   // Memory Section（1ページ = 64KiB）
   let mem_sec = @wasm.encode_memory_section([@wasm.LimitsMin(1)])
   for b in mem_sec {
+    result.push(b)
+  }
+  // Global Section: スタックポインタ（SP）を mutable i32 として定義
+  // 初期値はメモリの最上位アドレス（1ページ = 65536）
+  // スタックは上位アドレスから下位に向かって成長する
+  let sp_init_expr = @wasm.make_i32_const_expr(memory_page_size)
+  let globals : Array[@wasm.GlobalEntry] = [
+    {
+      global_type: { valtype: @wasm.I32, mutability: @wasm.Mutable },
+      init_expr: sp_init_expr,
+    },
+  ]
+  let global_sec = @wasm.encode_global_section(globals)
+  for b in global_sec {
     result.push(b)
   }
   // Export Section
