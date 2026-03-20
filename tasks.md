@@ -71,7 +71,7 @@
 ### Codegen 実装
 - [x] 式の Codegen: IntLit → `i32.const`, BinaryOp → 対応する `i32.xxx` 命令
 - [x] ローカル変数: Wasm locals へのマッピング（変数名 → local index）
-- [ ] 関数呼び出し: `call` 命令（関数名 → function index）
+- [x] 関数呼び出し: `call` 命令（関数名 → function index）
 - [ ] return 文: Codegen + `end`
 - [ ] 変数宣言と代入: `local.set` / `local.get`
 - [ ] 複数関数のコンパイル: function index の管理

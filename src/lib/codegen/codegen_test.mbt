@@ -274,6 +274,107 @@ test "emit_expr: undefined variable error" {
   )
 }
 
+// === 関数呼び出しテスト ===
+
+/// Call("add", [3, 4]) → i32.const 3; i32.const 4; call 0
+test "emit_expr: call no args" {
+  let functions : Map[String, Int] = { "foo": 0 }
+  let ctx = CodegenContext::from_params([], functions~)
+  let code : Array[Byte] = []
+  emit_expr(@ast.Call("foo", []), code, ctx)
+  // call 0 → 0x10 0x00
+  inspect(bytes_to_hex(code), content="10 00")
+}
+
+/// Call("add", [3, 4]) → i32.const 3; i32.const 4; call 0
+test "emit_expr: call with args" {
+  let functions : Map[String, Int] = { "add": 0 }
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
+    functions~,
+  )
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.Call("add", [@ast.IntLiteral(3), @ast.IntLiteral(4)]),
+    code,
+    ctx,
+  )
+  // i32.const 3; i32.const 4; call 0
+  inspect(bytes_to_hex(code), content="41 03 41 04 10 00")
+}
+
+/// Call with function index > 0
+test "emit_expr: call function index 1" {
+  let functions : Map[String, Int] = { "foo": 0, "bar": 1 }
+  let ctx = CodegenContext::from_params([], functions~)
+  let code : Array[Byte] = []
+  emit_expr(@ast.Call("bar", [@ast.IntLiteral(42)]), code, ctx)
+  // i32.const 42; call 1
+  inspect(bytes_to_hex(code), content="41 2A 10 01")
+}
+
+/// Call with local variable as argument: add(a, b) → local.get 0; local.get 1; call 0
+test "emit_expr: call with local args" {
+  let functions : Map[String, Int] = { "add": 0 }
+  let ctx = CodegenContext::from_params(
+    [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
+    functions~,
+  )
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.Call("add", [@ast.Ident("a"), @ast.Ident("b")]),
+    code,
+    ctx,
+  )
+  // local.get 0; local.get 1; call 0
+  inspect(bytes_to_hex(code), content="20 00 20 01 10 00")
+}
+
+/// Call with expression args: add(1 + 2, 3) → i32.const 1; i32.const 2; i32.add; i32.const 3; call 0
+test "emit_expr: call with expr args" {
+  let functions : Map[String, Int] = { "add": 0 }
+  let ctx = CodegenContext::from_params([], functions~)
+  let code : Array[Byte] = []
+  emit_expr(
+    @ast.Call(
+      "add",
+      [
+        @ast.BinaryOp(Add, @ast.IntLiteral(1), @ast.IntLiteral(2)),
+        @ast.IntLiteral(3),
+      ],
+    ),
+    code,
+    ctx,
+  )
+  // i32.const 1; i32.const 2; i32.add; i32.const 3; call 0
+  inspect(bytes_to_hex(code), content="41 01 41 02 6A 41 03 10 00")
+}
+
+/// 未定義関数の呼び出しはエラーになる
+test "emit_expr: undefined function error" {
+  let ctx = CodegenContext::new()
+  let code : Array[Byte] = []
+  let result : Result[Unit, Error] = try {
+    Ok(emit_expr(@ast.Call("unknown", []), code, ctx))
+  } catch {
+    e => Err(e)
+  }
+  inspect(
+    result is Err(_),
+    content="true",
+  )
+}
+
+/// 大きい function index (128以上, 2バイト ULEB128)
+test "emit_expr: call large function index" {
+  let functions : Map[String, Int] = { "big": 128 }
+  let ctx = CodegenContext::from_params([], functions~)
+  let code : Array[Byte] = []
+  emit_expr(@ast.Call("big", []), code, ctx)
+  // call 128 → 0x10 0x80 0x01
+  inspect(bytes_to_hex(code), content="10 80 01")
+}
+
 /// emit_local_set: local.set 命令の生成
 test "emit_local_set: index 0" {
   let code : Array[Byte] = []

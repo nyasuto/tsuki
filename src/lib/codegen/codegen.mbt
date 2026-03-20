@@ -27,6 +27,7 @@ let op_i32_or : Byte = b'\x72'
 let op_i32_xor : Byte = b'\x73'
 let op_i32_shl : Byte = b'\x74'
 let op_i32_shr_s : Byte = b'\x75'
+let op_call : Byte = b'\x10'
 
 /// コード生成コンテキスト: 変数名 → Wasm local index のマッピングを管理する
 pub struct CodegenContext {
@@ -34,17 +35,22 @@ pub struct CodegenContext {
   locals : Map[String, Int]
   /// 次に割り当てる local index
   mut next_index : Int
+  /// 関数名 → function index のマッピング
+  functions : Map[String, Int]
 }
 
 /// 新しい CodegenContext を作成する
 pub fn CodegenContext::new() -> CodegenContext {
-  { locals: {}, next_index: 0 }
+  { locals: {}, next_index: 0, functions: {} }
 }
 
 /// 関数パラメータをローカル変数として登録する
 /// パラメータは関数の先頭から順に local index 0, 1, 2, ... に割り当てられる
-pub fn CodegenContext::from_params(params : Array[@ast.Param]) -> CodegenContext {
-  let ctx = CodegenContext::new()
+pub fn CodegenContext::from_params(
+  params : Array[@ast.Param],
+  functions~ : Map[String, Int] = {}
+) -> CodegenContext {
+  let ctx : CodegenContext = { locals: {}, next_index: 0, functions }
   for param in params {
     ctx.locals[param.name] = ctx.next_index
     ctx.next_index += 1
@@ -66,6 +72,14 @@ pub fn CodegenContext::resolve(
   name : String
 ) -> Int? {
   self.locals.get(name)
+}
+
+/// 関数名から function index を取得する
+pub fn CodegenContext::resolve_function(
+  self : CodegenContext,
+  name : String
+) -> Int? {
+  self.functions.get(name)
 }
 
 /// 二項演算子を対応する Wasm オペコードに変換する
@@ -156,9 +170,25 @@ pub fn emit_expr(
             "codegen: 未定義の変数 '" + name + "'",
           )
       }
-    // 以下の式は後続タスクで実装する
-    Call(_, _) =>
-      raise CodegenError("codegen: Call は未実装（関数呼び出しタスクで実装）")
+    Call(name, args) =>
+      match ctx.resolve_function(name) {
+        Some(func_index) => {
+          // 引数を左から順にスタックに積む
+          for arg in args {
+            emit_expr(arg, code, ctx)
+          }
+          // call 命令: 関数インデックスを指定
+          code.push(op_call)
+          let bytes = @wasm.encode_uleb128(func_index)
+          for b in bytes {
+            code.push(b)
+          }
+        }
+        None =>
+          raise CodegenError(
+            "codegen: 未定義の関数 '" + name + "'",
+          )
+      }
     Assign(_, _) =>
       raise CodegenError("codegen: Assign は未実装（変数代入タスクで実装）")
     StringLiteral(_) =>
