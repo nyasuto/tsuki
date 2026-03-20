@@ -669,3 +669,167 @@ test "transform_expr: sizeof(void) → error" {
   let result = tc.transform_expr(e(SizeOf("void")))
   inspect(result, content="Err(\"cannot compute size of void\")")
 }
+
+// --- エッジケーステスト ---
+
+test "is_assignable: Array to Ptr decay" {
+  // int arr[5] を int* に代入可能
+  inspect(
+    is_assignable(
+      @ast.CType::Ptr(@ast.CType::Int),
+      @ast.CType::Array(@ast.CType::Int, 5),
+    ),
+    content="true",
+  )
+}
+
+test "is_assignable: Ptr to Array decay" {
+  // int* を int[5] に代入可能
+  inspect(
+    is_assignable(
+      @ast.CType::Array(@ast.CType::Int, 5),
+      @ast.CType::Ptr(@ast.CType::Int),
+    ),
+    content="true",
+  )
+}
+
+test "is_assignable: Array type mismatch" {
+  // char[5] を int* に代入不可（要素型が異なる）
+  inspect(
+    is_assignable(
+      @ast.CType::Ptr(@ast.CType::Int),
+      @ast.CType::Array(@ast.CType::Char, 5),
+    ),
+    content="true",
+  )
+}
+
+test "is_assignable: same Array types" {
+  inspect(
+    is_assignable(
+      @ast.CType::Array(@ast.CType::Int, 3),
+      @ast.CType::Array(@ast.CType::Int, 3),
+    ),
+    content="true",
+  )
+}
+
+test "is_assignable: different Array sizes" {
+  inspect(
+    is_assignable(
+      @ast.CType::Array(@ast.CType::Int, 3),
+      @ast.CType::Array(@ast.CType::Int, 5),
+    ),
+    content="false",
+  )
+}
+
+test "TypeChecker: char arithmetic produces Int" {
+  let tc = TypeChecker::new()
+  let result = tc.infer_expr(
+    e(BinaryOp(Add, e(CharLiteral('a')), e(IntLiteral(1)))),
+  )
+  inspect(result, content="Ok(Int)")
+}
+
+test "TypeChecker: modulo on integers" {
+  let tc = TypeChecker::new()
+  let result = tc.infer_expr(
+    e(BinaryOp(Mod, e(IntLiteral(10)), e(IntLiteral(3)))),
+  )
+  inspect(result, content="Ok(Int)")
+}
+
+test "TypeChecker: logical NOT produces Int" {
+  let tc = TypeChecker::new()
+  let result = tc.infer_expr(e(UnaryOp(LogNot, e(IntLiteral(0)))))
+  inspect(result, content="Ok(Int)")
+}
+
+test "TypeChecker: bitwise NOT produces Int" {
+  let tc = TypeChecker::new()
+  let result = tc.infer_expr(e(UnaryOp(BitNot, e(IntLiteral(0)))))
+  inspect(result, content="Ok(Int)")
+}
+
+test "TypeChecker: nested function calls type" {
+  let tc = TypeChecker::new()
+  let _ = tc.symbols.add_symbol(
+    "add",
+    Function(@ast.CType::Int, [@ast.CType::Int, @ast.CType::Int]),
+  )
+  let result = tc.infer_expr(
+    e(Call("add", [e(Call("add", [e(IntLiteral(1)), e(IntLiteral(2))])), e(IntLiteral(3))])),
+  )
+  inspect(result, content="Ok(Int)")
+}
+
+test "TypeChecker: empty block in function" {
+  // int main() { {} return 0; }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "main",
+        [],
+        s(Block([s(Block([])), s(Return(Some(e(IntLiteral(0)))))])),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(tc.check_program(program), content="Ok(())")
+}
+
+test "TypeChecker: multiple functions calling each other" {
+  // int double_val(int x) { return x + x; }
+  // int quad(int x) { return double_val(double_val(x)); }
+  // int main() { return quad(3); }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "double_val",
+        [{ type_name: "int", name: "x" }],
+        s(Block([s(Return(Some(e(BinaryOp(Add, e(Ident("x")), e(Ident("x")))))))])),
+      ),
+      FuncDef(
+        "int",
+        "quad",
+        [{ type_name: "int", name: "x" }],
+        s(Block([s(Return(Some(e(Call("double_val", [e(Call("double_val", [e(Ident("x"))]))])))))])),
+      ),
+      FuncDef(
+        "int",
+        "main",
+        [],
+        s(Block([s(Return(Some(e(Call("quad", [e(IntLiteral(3))])))))])),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(tc.check_program(program), content="Ok(())")
+}
+
+test "TypeChecker: pointer comparison" {
+  let tc = TypeChecker::new()
+  let _ = tc.symbols.add_symbol("p", Variable(@ast.CType::Ptr(@ast.CType::Int)))
+  let _ = tc.symbols.add_symbol("q", Variable(@ast.CType::Ptr(@ast.CType::Int)))
+  let result = tc.infer_expr(e(BinaryOp(Eq, e(Ident("p")), e(Ident("q")))))
+  inspect(result, content="Ok(Int)")
+}
+
+test "TypeChecker: pointer arithmetic (ptr + int)" {
+  let tc = TypeChecker::new()
+  let _ = tc.symbols.add_symbol("p", Variable(@ast.CType::Ptr(@ast.CType::Int)))
+  let result = tc.infer_expr(e(BinaryOp(Add, e(Ident("p")), e(IntLiteral(1)))))
+  inspect(result, content="Ok(Ptr(Int))")
+}
+
+test "TypeChecker: pointer subtraction yields Int" {
+  let tc = TypeChecker::new()
+  let _ = tc.symbols.add_symbol("p", Variable(@ast.CType::Ptr(@ast.CType::Int)))
+  let _ = tc.symbols.add_symbol("q", Variable(@ast.CType::Ptr(@ast.CType::Int)))
+  let result = tc.infer_expr(e(BinaryOp(Sub, e(Ident("p")), e(Ident("q")))))
+  inspect(result, content="Ok(Int)")
+}

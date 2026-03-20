@@ -506,3 +506,73 @@ test "parse array empty brackets without init is error" {
     content="Err(\"array declared with empty brackets must have an initializer list at line 1, col 1\")",
   )
 }
+
+// --- エッジケーステスト ---
+
+test "parse empty block" {
+  let result = parse_block_from("{}")
+  inspect!(result, content="Ok(Block([]))")
+}
+
+test "parse nested empty blocks" {
+  let result = parse_block_from("{ {} {} }")
+  inspect!(result, content="Ok(Block([Block([]), Block([])]))")
+}
+
+test "parse return without value (void)" {
+  let result = parse_stmt_from("return;")
+  inspect!(result, content="Ok(Return(None))")
+}
+
+test "parse for without update" {
+  let result = parse_stmt_from("for (int i = 0; i < 10;) { return i; }")
+  inspect!(
+    result,
+    content="Ok(For(Some(VarDecl(\"int\", \"i\", Some(IntLiteral(0)))), Some(BinaryOp(Lt, Ident(\"i\"), IntLiteral(10))), None, Block([Return(Some(Ident(\"i\")))])))",
+  )
+}
+
+test "parse for without init" {
+  let result = parse_stmt_from("for (; x < 10; x = x + 1) { return x; }")
+  inspect!(
+    result,
+    content="Ok(For(None, Some(BinaryOp(Lt, Ident(\"x\"), IntLiteral(10))), Some(Assign(Ident(\"x\"), BinaryOp(Add, Ident(\"x\"), IntLiteral(1)))), Block([Return(Some(Ident(\"x\")))])))",
+  )
+}
+
+test "parse if without else" {
+  let result = parse_stmt_from("if (x > 0) return x;")
+  inspect!(
+    result,
+    content="Ok(If(BinaryOp(Gt, Ident(\"x\"), IntLiteral(0)), Return(Some(Ident(\"x\"))), None))",
+  )
+}
+
+test "parse deeply nested arithmetic" {
+  let result = parse_stmt_from("return ((1 + 2) * (3 - 4));")
+  inspect!(
+    result,
+    content="Ok(Return(Some(BinaryOp(Mul, BinaryOp(Add, IntLiteral(1), IntLiteral(2)), BinaryOp(Sub, IntLiteral(3), IntLiteral(4))))))",
+  )
+}
+
+test "parse multiple statements in block" {
+  let result = parse_block_from("{ int a = 1; int b = 2; return a + b; }")
+  inspect!(
+    result,
+    content="Ok(Block([VarDecl(\"int\", \"a\", Some(IntLiteral(1))), VarDecl(\"int\", \"b\", Some(IntLiteral(2))), Return(Some(BinaryOp(Add, Ident(\"a\"), Ident(\"b\"))))]))",
+  )
+}
+
+test "parse expression statement: function call" {
+  let result = parse_stmt_from("foo(1, 2);")
+  inspect!(result, content="Ok(ExprStmt(Call(\"foo\", [IntLiteral(1), IntLiteral(2)])))")
+}
+
+test "parse chained variable assignment" {
+  let result = parse_stmt_from("a = b = 0;")
+  inspect!(
+    result,
+    content="Ok(ExprStmt(Assign(Ident(\"a\"), Assign(Ident(\"b\"), IntLiteral(0)))))",
+  )
+}

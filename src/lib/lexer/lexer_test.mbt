@@ -632,3 +632,56 @@ test "snapshot edge: char literals with escapes" {
     #|Ok([{token: KwChar, pos: {line: 1, col: 1}}, {token: Ident("c"), pos: {line: 1, col: 6}}, {token: Assign, pos: {line: 1, col: 8}}, {token: CharLit('\n'), pos: {line: 1, col: 10}}, {token: Semi, pos: {line: 1, col: 14}}, {token: KwChar, pos: {line: 1, col: 16}}, {token: Ident("d"), pos: {line: 1, col: 21}}, {token: Assign, pos: {line: 1, col: 23}}, {token: CharLit('\\'), pos: {line: 1, col: 25}}, {token: Semi, pos: {line: 1, col: 29}}, {token: Eof, pos: {line: 1, col: 30}}])
   ))
 }
+
+// --- エッジケーステスト ---
+
+test "edge: empty input tokenizes to just Eof" {
+  let lexer = @lexer.Lexer::new("")
+  let result = lexer.tokenize()
+  inspect(result, content="Ok([{token: Eof, pos: {line: 1, col: 1}}])")
+}
+
+test "edge: integer zero" {
+  let lexer = @lexer.Lexer::new("0")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(0), pos: {line: 1, col: 1}})")
+}
+
+test "edge: multiple block comments in sequence" {
+  let lexer = @lexer.Lexer::new("/* a *//* b */42")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(42), pos: {line: 1, col: 15}})")
+}
+
+test "edge: line comment followed immediately by code" {
+  let lexer = @lexer.Lexer::new("// comment\n// another\n1")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(1), pos: {line: 3, col: 1}})")
+}
+
+test "edge: block comment with slash inside" {
+  let lexer = @lexer.Lexer::new("/* a / b */42")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(42), pos: {line: 1, col: 12}})")
+}
+
+test "edge: unterminated char literal" {
+  let lexer = @lexer.Lexer::new("'a")
+  let result = lexer.next_token()
+  inspect(
+    result,
+    content="Err(\"unterminated character literal at line 1, col 1\")",
+  )
+}
+
+test "edge: large integer literal" {
+  let lexer = @lexer.Lexer::new("2147483647")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(2147483647), pos: {line: 1, col: 1}})")
+}
+
+test "edge: token after string literal" {
+  let lexer = @lexer.Lexer::new("\"hello\";")
+  inspect(lexer.next_token(), content="Ok({token: StringLit(\"hello\"), pos: {line: 1, col: 1}})")
+  inspect(lexer.next_token(), content="Ok({token: Semi, pos: {line: 1, col: 8}})")
+}
