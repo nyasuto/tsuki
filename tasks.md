@@ -59,7 +59,7 @@
 - [x] Parser のスナップショットテスト: `"int main() { return 42; }"` → AST
 
 ### Wasm バイナリエンコーダ
-- [ ] LEB128（unsigned / signed）エンコーディング実装 + テスト
+- [x] LEB128（unsigned / signed）エンコーディング実装 + テスト
 - [ ] Wasm モジュールヘッダ（magic number + version）
 - [ ] Section エンコーディングの汎用関数（section id + size + payload）
 - [ ] Type Section: 関数シグネチャ（param types → result types）
