@@ -57,6 +57,8 @@ let op_global_set : Byte = b'\x24'
 /// メモリ命令のオペコード
 let op_i32_load : Byte = b'\x28'
 let op_i32_store : Byte = b'\x36'
+let op_memory_size : Byte = b'\x3F'
+let op_memory_grow : Byte = b'\x40'
 
 /// スタックポインタのグローバルインデックス
 let sp_global_index : Int = 0
@@ -1488,65 +1490,102 @@ pub fn compile_program(
       StructDef(_, _) => () // 構造体定義はコード生成不要
     }
   }
-  // malloc 関数の生成（バンプアロケータ）
+  // malloc 関数の生成（バンプアロケータ + memory.grow）
   // シグネチャ: (i32) -> (i32)  — size を受け取り、割り当てたアドレスを返す
+  // ローカル変数: local 0 = size (param), local 1 = old_hp, local 2 = new_hp
   // アルゴリズム:
   //   1. size を 4 バイトアラインメントに切り上げ
-  //   2. 現在のヒープポインタを返却値として保存
-  //   3. ヒープポインタを size 分進める
+  //   2. old_hp = hp, new_hp = hp + aligned_size
+  //   3. new_hp > memory.size * 65536 なら memory.grow で拡張
+  //   4. hp = new_hp
+  //   5. old_hp を返す
   let malloc_type_index = func_types.length()
   func_types.push({ params: [@wasm.I32], results: [@wasm.I32] })
   type_indices.push(malloc_type_index)
   let malloc_code : Array[Byte] = []
-  // size を 4 バイトアラインメントに切り上げ: size = (size + 3) & ~3
-  // local.get 0 (size)
+  // --- Step 1: size を 4 バイトアラインメントに切り上げ ---
+  // size = (size + 3) & ~3
   malloc_code.push(op_local_get)
-  for b in @wasm.encode_uleb128(0) {
-    malloc_code.push(b)
-  }
-  // i32.const 3
+  for b in @wasm.encode_uleb128(0) { malloc_code.push(b) }
   malloc_code.push(op_i32_const)
-  for b in @wasm.encode_sleb128(3) {
-    malloc_code.push(b)
-  }
-  // i32.add
+  for b in @wasm.encode_sleb128(3) { malloc_code.push(b) }
   malloc_code.push(op_i32_add)
-  // i32.const -4 (0xFFFFFFFC = ~3)
   malloc_code.push(op_i32_const)
-  for b in @wasm.encode_sleb128(-4) {
-    malloc_code.push(b)
-  }
-  // i32.and
+  for b in @wasm.encode_sleb128(-4) { malloc_code.push(b) }
   malloc_code.push(op_i32_and)
-  // local.set 0 (aligned size)
   malloc_code.push(op_local_set)
-  for b in @wasm.encode_uleb128(0) {
-    malloc_code.push(b)
-  }
-  // global.get hp (返却値: 割り当て前のアドレス)
+  for b in @wasm.encode_uleb128(0) { malloc_code.push(b) }
+  // --- Step 2: old_hp = hp, new_hp = hp + aligned_size ---
+  // local 1 = global.get hp
   malloc_code.push(op_global_get)
-  for b in @wasm.encode_uleb128(hp_global_index) {
-    malloc_code.push(b)
-  }
-  // global.get hp
-  malloc_code.push(op_global_get)
-  for b in @wasm.encode_uleb128(hp_global_index) {
-    malloc_code.push(b)
-  }
-  // local.get 0 (aligned size)
+  for b in @wasm.encode_uleb128(hp_global_index) { malloc_code.push(b) }
+  malloc_code.push(op_local_set)
+  for b in @wasm.encode_uleb128(1) { malloc_code.push(b) }
+  // local 2 = old_hp + aligned_size
   malloc_code.push(op_local_get)
-  for b in @wasm.encode_uleb128(0) {
-    malloc_code.push(b)
-  }
-  // i32.add (hp + size)
+  for b in @wasm.encode_uleb128(1) { malloc_code.push(b) }
+  malloc_code.push(op_local_get)
+  for b in @wasm.encode_uleb128(0) { malloc_code.push(b) }
   malloc_code.push(op_i32_add)
-  // global.set hp (新しいヒープポインタ)
+  malloc_code.push(op_local_set)
+  for b in @wasm.encode_uleb128(2) { malloc_code.push(b) }
+  // --- Step 3: new_hp > memory.size * 65536 なら memory.grow ---
+  // if (new_hp > memory.size * 65536)
+  malloc_code.push(op_local_get)
+  for b in @wasm.encode_uleb128(2) { malloc_code.push(b) }
+  // memory.size (ページ数を返す) — memory index 0x00 が必要
+  malloc_code.push(op_memory_size)
+  malloc_code.push(b'\x00') // memory index
+  malloc_code.push(op_i32_const)
+  for b in @wasm.encode_sleb128(16) { malloc_code.push(b) }
+  malloc_code.push(op_i32_shl) // memory.size << 16 = memory.size * 65536
+  malloc_code.push(op_i32_gt_s) // new_hp > current_memory_bytes?
+  malloc_code.push(op_if)
+  malloc_code.push(b'\x40') // void block type
+  // 必要ページ数 = (new_hp - current_bytes + 65535) / 65536
+  // = (new_hp - (memory.size << 16) + 65535) >> 16
+  malloc_code.push(op_local_get)
+  for b in @wasm.encode_uleb128(2) { malloc_code.push(b) }
+  malloc_code.push(op_memory_size)
+  malloc_code.push(b'\x00')
+  malloc_code.push(op_i32_const)
+  for b in @wasm.encode_sleb128(16) { malloc_code.push(b) }
+  malloc_code.push(op_i32_shl)
+  malloc_code.push(op_i32_sub) // new_hp - current_bytes
+  malloc_code.push(op_i32_const)
+  for b in @wasm.encode_sleb128(65535) { malloc_code.push(b) }
+  malloc_code.push(op_i32_add) // + 65535 (切り上げ用)
+  malloc_code.push(op_i32_const)
+  for b in @wasm.encode_sleb128(16) { malloc_code.push(b) }
+  // i32.shr_u (0x76) で符号なし右シフト
+  malloc_code.push(b'\x76') // i32.shr_u
+  // memory.grow — 引数: ページ数、戻り値: 以前のページ数 or -1
+  malloc_code.push(op_memory_grow)
+  malloc_code.push(b'\x00') // memory index
+  // memory.grow が -1 を返した場合 → メモリ不足で unreachable
+  malloc_code.push(op_i32_const)
+  for b in @wasm.encode_sleb128(-1) { malloc_code.push(b) }
+  malloc_code.push(op_i32_eq)
+  malloc_code.push(op_if)
+  malloc_code.push(b'\x40') // void block type
+  malloc_code.push(op_unreachable)
+  malloc_code.push(op_end) // end inner if
+  malloc_code.push(op_end) // end outer if
+  // --- Step 4: hp = new_hp ---
+  malloc_code.push(op_local_get)
+  for b in @wasm.encode_uleb128(2) { malloc_code.push(b) }
   malloc_code.push(op_global_set)
-  for b in @wasm.encode_uleb128(hp_global_index) {
-    malloc_code.push(b)
-  }
-  // スタックには old hp が残っている → 返却値
-  func_bodies.push({ locals: [], code: malloc_code })
+  for b in @wasm.encode_uleb128(hp_global_index) { malloc_code.push(b) }
+  // --- Step 5: old_hp を返す ---
+  malloc_code.push(op_local_get)
+  for b in @wasm.encode_uleb128(1) { malloc_code.push(b) }
+  // ローカル変数: local 1 (old_hp: i32), local 2 (new_hp: i32)
+  func_bodies.push(
+    {
+      locals: [{ count: 1, valtype: @wasm.I32 }, { count: 1, valtype: @wasm.I32 }],
+      code: malloc_code,
+    },
+  )
   // _start ラッパー関数の生成: main() を呼んで proc_exit に渡す
   let start_func_index = func_index // _start の function index
   // _start の型: () -> ()
