@@ -60,7 +60,7 @@
 
 ### Wasm バイナリエンコーダ
 - [x] LEB128（unsigned / signed）エンコーディング実装 + テスト
-- [ ] Wasm モジュールヘッダ（magic number + version）
+- [x] Wasm モジュールヘッダ（magic number + version）
 - [ ] Section エンコーディングの汎用関数（section id + size + payload）
 - [ ] Type Section: 関数シグネチャ（param types → result types）
 - [ ] Function Section: 関数インデックス → type インデックスのマッピング
