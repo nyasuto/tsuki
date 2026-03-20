@@ -69,6 +69,8 @@ pub fn Parser::parse_stmt(self : Parser) -> Result[@ast.Stmt, String] {
   match self.peek() {
     // return 文
     KwReturn => self.parse_return_stmt()
+    // if 文
+    KwIf => self.parse_if_stmt()
     // ブロック
     LBrace => self.parse_block()
     // 変数宣言（型キーワードで始まる）
@@ -80,6 +82,40 @@ pub fn Parser::parse_stmt(self : Parser) -> Result[@ast.Stmt, String] {
         self.parse_expr_stmt()
       }
   }
+}
+
+/// if 文のパース: if (expr) stmt または if (expr) stmt else stmt
+fn Parser::parse_if_stmt(self : Parser) -> Result[@ast.Stmt, String] {
+  match self.expect(@lexer.Token::KwIf) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  match self.expect(@lexer.Token::LParen) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  let cond = match self.parse_expr() {
+    Ok(e) => e
+    Err(e) => return Err(e)
+  }
+  match self.expect(@lexer.Token::RParen) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  let then_stmt = match self.parse_stmt() {
+    Ok(s) => s
+    Err(e) => return Err(e)
+  }
+  let else_stmt : @ast.Stmt? = if self.check(@lexer.Token::KwElse) {
+    self.advance() |> ignore
+    match self.parse_stmt() {
+      Ok(s) => Some(s)
+      Err(e) => return Err(e)
+    }
+  } else {
+    None
+  }
+  Ok(@ast.Stmt::If(cond, then_stmt, else_stmt))
 }
 
 /// return 文のパース: return; または return expr;

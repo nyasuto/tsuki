@@ -139,6 +139,66 @@ test "parse block with var decl and assignment" {
   )
 }
 
+// === if / else 文 ===
+
+test "parse if without else" {
+  let result = parse_stmt_from("if (x > 0) return x;")
+  inspect!(
+    result,
+    content="Ok(If(BinaryOp(Gt, Ident(\"x\"), IntLiteral(0)), Return(Some(Ident(\"x\"))), None))",
+  )
+}
+
+test "parse if with else" {
+  let result = parse_stmt_from("if (x < 0) return 0; else return 1;")
+  inspect!(
+    result,
+    content="Ok(If(BinaryOp(Lt, Ident(\"x\"), IntLiteral(0)), Return(Some(IntLiteral(0))), Some(Return(Some(IntLiteral(1))))))",
+  )
+}
+
+test "parse if with block" {
+  let result = parse_stmt_from("if (a == b) { return 1; }")
+  inspect!(
+    result,
+    content="Ok(If(BinaryOp(Eq, Ident(\"a\"), Ident(\"b\")), Block([Return(Some(IntLiteral(1)))]), None))",
+  )
+}
+
+test "parse if/else with blocks" {
+  let result = parse_stmt_from("if (x) { return 1; } else { return 0; }")
+  inspect!(
+    result,
+    content="Ok(If(Ident(\"x\"), Block([Return(Some(IntLiteral(1)))]), Some(Block([Return(Some(IntLiteral(0)))]))))",
+  )
+}
+
+test "parse nested if/else (dangling else)" {
+  let result = parse_stmt_from("if (a) if (b) return 1; else return 2;")
+  inspect!(
+    result,
+    content="Ok(If(Ident(\"a\"), If(Ident(\"b\"), Return(Some(IntLiteral(1))), Some(Return(Some(IntLiteral(2))))), None))",
+  )
+}
+
+test "parse if/else if/else chain" {
+  let result = parse_stmt_from(
+    "if (x == 1) return 10; else if (x == 2) return 20; else return 30;",
+  )
+  inspect!(
+    result,
+    content="Ok(If(BinaryOp(Eq, Ident(\"x\"), IntLiteral(1)), Return(Some(IntLiteral(10))), Some(If(BinaryOp(Eq, Ident(\"x\"), IntLiteral(2)), Return(Some(IntLiteral(20))), Some(Return(Some(IntLiteral(30))))))))",
+  )
+}
+
+test "parse if missing lparen" {
+  let result = parse_stmt_from("if x > 0) return x;")
+  inspect!(
+    result,
+    content="Err(\"expected LParen, got Ident(\\\"x\\\") at line 1, col 4\")",
+  )
+}
+
 // === 関数定義 ===
 
 /// ヘルパー: ソースコードから関数定義をパースする

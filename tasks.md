@@ -96,7 +96,7 @@
 ## Phase 3: 制御フロー + 比較演算 — ⏳ WAITING
 
 ### Parser 拡張
-- [ ] if / else 文のパース
+- [x] if / else 文のパース
 - [ ] while 文のパース
 - [ ] for 文のパース（init; cond; update の3要素）
 - [ ] 比較演算子（==, !=, <, >, <=, >=）の AST ノード確認
