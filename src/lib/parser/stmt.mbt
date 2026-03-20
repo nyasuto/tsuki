@@ -227,7 +227,7 @@ fn Parser::parse_return_stmt(self : Parser) -> Result[@ast.Stmt, String] {
   Ok(@ast.Stmt::Return(Some(expr)))
 }
 
-/// 変数宣言のパース: type name; または type name = expr;
+/// 変数宣言のパース: type name; または type name = expr; または type name[N];
 fn Parser::parse_var_decl(self : Parser) -> Result[@ast.Stmt, String] {
   let type_name = match self.parse_type_name() {
     Ok(t) => t
@@ -244,6 +244,29 @@ fn Parser::parse_var_decl(self : Parser) -> Result[@ast.Stmt, String] {
         "expected variable name, got \{token} at line \{pos.line}, col \{pos.col}",
       )
     }
+  }
+  // 配列宣言のチェック: name[N]
+  let type_name = if self.check(@lexer.Token::LBracket) {
+    self.advance() |> ignore
+    let size = match self.peek() {
+      IntLit(n) => {
+        self.advance() |> ignore
+        n
+      }
+      token => {
+        let pos = self.current_pos()
+        return Err(
+          "expected array size, got \{token} at line \{pos.line}, col \{pos.col}",
+        )
+      }
+    }
+    match self.expect(@lexer.Token::RBracket) {
+      Ok(_) => ()
+      Err(e) => return Err(e)
+    }
+    type_name + "[" + size.to_string() + "]"
+  } else {
+    type_name
   }
   // 初期化式があるかチェック
   let init_expr : @ast.Expr? = if self.check(@lexer.Token::Assign) {

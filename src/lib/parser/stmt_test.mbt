@@ -455,3 +455,20 @@ test "parse program: struct return type function" {
   )
   inspect!(result.is_ok(), content="true")
 }
+
+// === 配列宣言 ===
+
+test "parse array declaration" {
+  let result = parse_stmt_from("int arr[10];")
+  inspect!(result, content="Ok(VarDecl(\"int[10]\", \"arr\", None))")
+}
+
+test "parse char array declaration" {
+  let result = parse_stmt_from("char buf[256];")
+  inspect!(result, content="Ok(VarDecl(\"char[256]\", \"buf\", None))")
+}
+
+test "parse pointer array declaration" {
+  let result = parse_stmt_from("int* ptrs[5];")
+  inspect!(result, content="Ok(VarDecl(\"int*[5]\", \"ptrs\", None))")
+}

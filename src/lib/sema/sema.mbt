@@ -1,3 +1,20 @@
+/// 文字列を整数に変換（配列サイズ用）
+fn parse_array_size(s : String) -> Result[Int, String] {
+  if s.length() == 0 {
+    return Err("empty array size")
+  }
+  let mut result = 0
+  for i = 0; i < s.length(); i = i + 1 {
+    let ch = s[i]
+    if ch >= '0' && ch <= '9' {
+      result = result * 10 + (ch.to_int() - '0'.to_int())
+    } else {
+      return Err("invalid array size: " + s)
+    }
+  }
+  Ok(result)
+}
+
 /// シンボルの種類
 pub(all) enum SymbolKind {
   /// 変数: 型情報
@@ -43,8 +60,32 @@ pub struct SymbolTable {
 
 /// 型名文字列から CType への変換
 pub fn resolve_type_name(name : String) -> Result[@ast.CType, String] {
-  // ポインタ型の処理: "int*", "char*" など
-  if name.length() > 0 && name[name.length() - 1] == '*' {
+  // 配列型の処理: "int[10]" → Array(Int, 10)
+  // 末尾が ']' で終わる場合、配列型として処理
+  if name.length() > 0 && name[name.length() - 1] == ']' {
+    // '[' の位置を探す
+    let mut bracket_pos = -1
+    for i = name.length() - 2; i >= 0; i = i - 1 {
+      if name[i] == '[' {
+        bracket_pos = i
+        break
+      }
+    }
+    if bracket_pos < 0 {
+      return Err("malformed array type: " + name)
+    }
+    let base_name = name[0:bracket_pos].to_string()
+    let size_str = name[bracket_pos + 1 : name.length() - 1].to_string()
+    let size = match parse_array_size(size_str) {
+      Ok(n) => n
+      Err(e) => return Err(e)
+    }
+    match resolve_type_name(base_name) {
+      Ok(base_type) => Ok(@ast.CType::Array(base_type, size))
+      Err(e) => Err(e)
+    }
+  } else if name.length() > 0 && name[name.length() - 1] == '*' {
+    // ポインタ型の処理: "int*", "char*" など
     let base_name = name[0 : name.length() - 1].to_string()
     // 再帰的に解決（多重ポインタ対応: "int**" → Ptr(Ptr(Int))）
     match resolve_type_name(base_name) {

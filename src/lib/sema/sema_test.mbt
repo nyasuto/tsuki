@@ -304,3 +304,17 @@ test "SymbolTable: nested struct field" {
     content="Ok({name: \"Rect\", fields: [{name: \"origin\", field_type: Struct(\"Point\"), offset: 0}, {name: \"width\", field_type: Int, offset: 8}, {name: \"height\", field_type: Int, offset: 12}], total_size: 16})",
   )
 }
+
+// === resolve_type_name: 配列型 ===
+
+test "resolve_type_name: int[10]" {
+  inspect(resolve_type_name("int[10]"), content="Ok(Array(Int, 10))")
+}
+
+test "resolve_type_name: char[256]" {
+  inspect(resolve_type_name("char[256]"), content="Ok(Array(Char, 256))")
+}
+
+test "resolve_type_name: int*[5]" {
+  inspect(resolve_type_name("int*[5]"), content="Ok(Array(Ptr(Int), 5))")
+}
