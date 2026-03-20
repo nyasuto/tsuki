@@ -385,6 +385,46 @@ pub fn TypeChecker::transform_expr(
           }
         None => Err("undefined function: '" + name + "'")
       }
+    MemberAccess(base, field_name) => {
+      let typed_base = match self.transform_expr(base) {
+        Ok(t) => t
+        Err(e) => return Err(e)
+      }
+      match typed_base.ty {
+        Struct(sname) =>
+          match self.symbols.lookup_struct(sname) {
+            Some(info) => {
+              // フィールドを検索
+              let mut found : @ast.CType? = None
+              for f in info.fields {
+                if f.name == field_name {
+                  found = Some(f.field_type)
+                  break
+                }
+              }
+              match found {
+                Some(field_ty) =>
+                  Ok(
+                    {
+                      kind: @ast.TypedExprKind::MemberAccess(typed_base, field_name),
+                      ty: field_ty,
+                    },
+                  )
+                None =>
+                  Err(
+                    "struct '" +
+                    sname +
+                    "' has no field named '" +
+                    field_name +
+                    "'",
+                  )
+              }
+            }
+            None => Err("undefined struct: '" + sname + "'")
+          }
+        other => Err("member access on non-struct type: " + other.to_string())
+      }
+    }
     Assign(lhs, rhs) => {
       let typed_lhs = match self.transform_expr(lhs) {
         Ok(t) => t

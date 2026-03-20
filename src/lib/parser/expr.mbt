@@ -177,6 +177,23 @@ fn Parser::parse_expr_bp(
       lhs = @ast.Expr::UnaryOp(PostDec, lhs)
       continue
     }
+    // メンバアクセス s.field（結合力 25: 後置演算子と同等）
+    if op_token == @lexer.Token::Dot && postfix_bp >= min_bp {
+      self.advance() |> ignore
+      match self.peek() {
+        Ident(field_name) => {
+          self.advance() |> ignore
+          lhs = @ast.Expr::MemberAccess(lhs, field_name)
+          continue
+        }
+        other => {
+          let pos = self.current_pos()
+          return Err(
+            "expected field name after '.', got \{other} at line \{pos.line}, col \{pos.col}",
+          )
+        }
+      }
+    }
     // 配列添字 a[i] → *(a + i) へのデシュガー（結合力 25: 後置演算子と同等）
     if op_token == @lexer.Token::LBracket && postfix_bp >= min_bp {
       self.advance() |> ignore

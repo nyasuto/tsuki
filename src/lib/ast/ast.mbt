@@ -53,6 +53,7 @@ pub(all) enum Expr {
   UnaryOp(UnaryOp, Expr)                // 単項演算: op, operand
   Call(String, Array[Expr])              // 関数呼び出し: name, args
   Assign(Expr, Expr)                    // 代入: lhs, rhs
+  MemberAccess(Expr, String)            // メンバアクセス: base.field
 } derive(Show, Eq)
 
 /// 文
@@ -110,6 +111,7 @@ pub(all) enum TypedExprKind {
   UnaryOp(UnaryOp, TypedExpr)           // 単項演算: op, operand
   Call(String, Array[TypedExpr])         // 関数呼び出し: name, args
   Assign(TypedExpr, TypedExpr)          // 代入: lhs, rhs
+  MemberAccess(TypedExpr, String)       // メンバアクセス: base.field
 } derive(Show, Eq)
 
 /// 型付き文

@@ -370,3 +370,24 @@ test "parse array subscript in expression" {
     content="Ok(BinaryOp(Add, UnaryOp(Deref, BinaryOp(Add, Ident(\"a\"), IntLiteral(0))), UnaryOp(Deref, BinaryOp(Add, Ident(\"b\"), IntLiteral(1)))))",
   )
 }
+
+test "parse member access s.field" {
+  let parser = make_parser("p.x")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(MemberAccess(Ident(\"p\"), \"x\"))")
+}
+
+test "parse member access in expression" {
+  let parser = make_parser("p.x + p.y")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(BinaryOp(Add, MemberAccess(Ident(\"p\"), \"x\"), MemberAccess(Ident(\"p\"), \"y\")))",
+  )
+}
+
+test "parse member access assignment" {
+  let parser = make_parser("p.x = 10")
+  let expr = parser.parse_expr()
+  inspect(expr, content="Ok(Assign(MemberAccess(Ident(\"p\"), \"x\"), IntLiteral(10)))")
+}

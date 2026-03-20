@@ -325,6 +325,7 @@ fn collect_addr_taken_in_expr(
       collect_addr_taken_in_expr(l, vars)
       collect_addr_taken_in_expr(r, vars)
     }
+    MemberAccess(base, _) => collect_addr_taken_in_expr(base, vars)
     IntLiteral(_) => ()
     CharLiteral(_) => ()
     StringLiteral(_) => ()
@@ -375,6 +376,84 @@ fn collect_addr_taken_in_stmt(
       }
       collect_addr_taken_in_stmt(body, vars)
     }
+  }
+}
+
+/// 式から構造体名を推定する（メンバアクセスのフィールドオフセット解決用）
+fn infer_struct_name(
+  expr : @ast.Expr,
+  ctx : CodegenContext
+) -> String? {
+  match expr {
+    Ident(name) =>
+      match ctx.var_types.get(name) {
+        Some(Struct(sname)) => Some(sname)
+        _ => None
+      }
+    MemberAccess(base, field_name) =>
+      // ネストしたメンバアクセス: base のフィールド型を辿る
+      match infer_struct_name(base, ctx) {
+        Some(sname) =>
+          match ctx.struct_defs.get(sname) {
+            Some(info) => {
+              let mut result : String? = None
+              for f in info.fields {
+                if f.name == field_name {
+                  match f.field_type {
+                    Struct(inner_sname) => result = Some(inner_sname)
+                    _ => ()
+                  }
+                  break
+                }
+              }
+              result
+            }
+            None => None
+          }
+        None => None
+      }
+    _ => None
+  }
+}
+
+/// メンバアクセスのアドレスを生成する: ベースアドレス + フィールドオフセット
+fn emit_member_addr(
+  base : @ast.Expr,
+  field_name : String,
+  code : Array[Byte],
+  ctx : CodegenContext
+) -> Unit raise CodegenError {
+  // ベースのアドレスを取得（構造体の Ident はアドレスを返す）
+  emit_expr(base, code, ctx)
+  // 構造体名を推定してフィールドオフセットを取得
+  let sname = match infer_struct_name(base, ctx) {
+    Some(s) => s
+    None =>
+      raise CodegenError("codegen: メンバアクセスのベースが構造体ではありません")
+  }
+  let info = match ctx.struct_defs.get(sname) {
+    Some(i) => i
+    None => raise CodegenError("codegen: 未定義の構造体 '\{sname}'")
+  }
+  let mut field_offset = -1
+  for f in info.fields {
+    if f.name == field_name {
+      field_offset = f.offset
+      break
+    }
+  }
+  if field_offset < 0 {
+    raise CodegenError(
+      "codegen: 構造体 '\{sname}' にフィールド '\{field_name}' がありません",
+    )
+  }
+  // i32.const field_offset + i32.add
+  if field_offset > 0 {
+    code.push(op_i32_const)
+    for b in @wasm.encode_sleb128(field_offset) {
+      code.push(b)
+    }
+    code.push(op_i32_add)
   }
 }
 
@@ -452,6 +531,24 @@ fn infer_expr_type(
     BinaryOp(_, _, _) => Some(@ast.CType::Int)
     Call(_, _) => None
     Assign(_, _) => None
+    MemberAccess(base, field_name) =>
+      match infer_struct_name(base, ctx) {
+        Some(sname) =>
+          match ctx.struct_defs.get(sname) {
+            Some(info) => {
+              let mut result : @ast.CType? = None
+              for f in info.fields {
+                if f.name == field_name {
+                  result = Some(f.field_type)
+                  break
+                }
+              }
+              result
+            }
+            None => None
+          }
+        None => None
+      }
   }
 }
 
@@ -720,6 +817,25 @@ pub fn emit_expr(
               )
           }
       }
+    Assign(MemberAccess(base, field_name), value) => {
+      // s.field = value: ベースアドレス + フィールドオフセットに書き込む
+      // C の代入は値を返すので、temp local で値を保持する
+      emit_member_addr(base, field_name, code, ctx) // [addr]
+      emit_expr(value, code, ctx) // [addr, value]
+      let temp = ctx.get_temp_local()
+      code.push(op_local_tee) // [addr, value] (value saved to temp)
+      let temp_bytes = @wasm.encode_uleb128(temp)
+      for b in temp_bytes {
+        code.push(b)
+      }
+      emit_i32_store(code) // []
+      // 値を式の結果として残す
+      code.push(op_local_get)
+      let temp_bytes2 = @wasm.encode_uleb128(temp)
+      for b in temp_bytes2 {
+        code.push(b)
+      }
+    }
     Assign(UnaryOp(Deref, addr_expr), value) => {
       // *p = value: アドレスを評価し、値を評価し、i32.store で書き込む
       // C の代入は値を返すので、temp local で値を保持する
@@ -934,6 +1050,13 @@ pub fn emit_expr(
       }
     UnaryOp(AddrOf, _) =>
       raise CodegenError("codegen: AddrOf のオペランドは変数でなければなりません")
+    MemberAccess(base, field_name) => {
+      // s.field（右辺値）: ベースアドレス + フィールドオフセットの値をロード
+      emit_member_addr(base, field_name, code, ctx) // [field_addr]
+      code.push(op_i32_load)
+      code.push(b'\x02') // alignment: 2^2 = 4 bytes
+      code.push(b'\x00') // memory offset: 0
+    }
   }
 }
 
