@@ -86,6 +86,8 @@ pub struct CodegenContext {
   var_types : Map[String, @ast.CType]
   /// 構造体定義のレジストリ（名前 → レイアウト情報）
   struct_defs : Map[String, @sema.StructInfo]
+  /// 関数名 → 戻り値型名のマッピング（void 関数の判定に使用）
+  func_return_types : Map[String, String]
 }
 
 /// 新しい CodegenContext を作成する
@@ -102,6 +104,7 @@ pub fn CodegenContext::new(
     temp_local: None,
     var_types: {},
     struct_defs,
+    func_return_types: {},
   }
 }
 
@@ -111,7 +114,8 @@ pub fn CodegenContext::from_params(
   params : Array[@ast.Param],
   functions~ : Map[String, Int] = {},
   addr_taken~ : Map[String, Bool] = {},
-  struct_defs~ : Map[String, @sema.StructInfo] = {}
+  struct_defs~ : Map[String, @sema.StructInfo] = {},
+  func_return_types~ : Map[String, String] = {}
 ) -> CodegenContext {
   let ctx : CodegenContext = {
     locals: {},
@@ -123,6 +127,7 @@ pub fn CodegenContext::from_params(
     temp_local: None,
     var_types: {},
     struct_defs,
+    func_return_types,
   }
   for param in params {
     ctx.locals[param.name] = ctx.next_index
@@ -391,6 +396,16 @@ fn infer_struct_name(
         Some(Struct(sname)) => Some(sname)
         _ => None
       }
+    UnaryOp(Deref, inner) =>
+      // *p where p : Ptr(Struct(sname)) → sname
+      match inner {
+        Ident(name) =>
+          match ctx.var_types.get(name) {
+            Some(Ptr(Struct(sname))) => Some(sname)
+            _ => None
+          }
+        _ => None
+      }
     MemberAccess(base, field_name) =>
       // ネストしたメンバアクセス: base のフィールド型を辿る
       match infer_struct_name(base, ctx) {
@@ -425,7 +440,12 @@ fn emit_member_addr(
   ctx : CodegenContext
 ) -> Unit raise CodegenError {
   // ベースのアドレスを取得（構造体の Ident はアドレスを返す）
-  emit_expr(base, code, ctx)
+  // UnaryOp(Deref, inner) の場合: inner がポインタなのでその値がアドレス
+  // emit_expr は i32.load してしまうので、inner だけを評価する
+  match base {
+    UnaryOp(Deref, inner) => emit_expr(inner, code, ctx)
+    _ => emit_expr(base, code, ctx)
+  }
   // 構造体名を推定してフィールドオフセットを取得
   let sname = match infer_struct_name(base, ctx) {
     Some(s) => s
@@ -1159,8 +1179,18 @@ pub fn emit_stmt(
     }
     ExprStmt(expr) => {
       emit_expr(expr, code, ctx)
-      // 式文の結果はスタックから捨てる
-      code.push(op_drop)
+      // void 関数呼び出しの場合、値がスタックにないので drop しない
+      let is_void_call = match expr {
+        Call(name, _) =>
+          match ctx.func_return_types.get(name) {
+            Some("void") => true
+            _ => false
+          }
+        _ => false
+      }
+      if not(is_void_call) {
+        code.push(op_drop)
+      }
     }
     Block(stmts) =>
       for stmt in stmts {
@@ -1278,7 +1308,9 @@ fn compile_function(
   params : Array[@ast.Param],
   body : @ast.Stmt,
   functions : Map[String, Int],
-  struct_defs~ : Map[String, @sema.StructInfo] = {}
+  struct_defs~ : Map[String, @sema.StructInfo] = {},
+  return_type~ : String = "int",
+  func_return_types~ : Map[String, String] = {}
 ) -> @wasm.FuncBody raise CodegenError {
   // 事前スキャン: アドレスが取られる変数を収集
   let addr_taken = collect_addr_taken_vars(body)
@@ -1287,12 +1319,17 @@ fn compile_function(
     functions~,
     addr_taken~,
     struct_defs~,
+    func_return_types~,
   )
   let code : Array[Byte] = []
   emit_stmt(body, code, ctx)
-  // 関数末尾に unreachable を追加
-  // 全パスが return で抜ける場合、関数 end 到達時のスタック型チェックを通すため
-  code.push(op_unreachable)
+  // void 関数: 末尾にエピローグを追加（暗黙の return）
+  // 非 void 関数: unreachable を追加（全パスが return で抜ける前提）
+  if return_type == "void" {
+    emit_epilogue(ctx.frame_size, code)
+  } else {
+    code.push(op_unreachable)
+  }
   // frame_size > 0 の場合、プロローグをコード先頭に挿入する
   // プロローグ: SP -= frame_size（スタックフレームの確保）
   // 本体コンパイル後に frame_size が確定するため、後から先頭に挿入する
@@ -1337,6 +1374,7 @@ pub fn compile_program(
   // 第1パス: 関数名 → function index のマッピングと構造体定義の登録
   // インポート関数の後にユーザー定義関数を配置する
   let functions : Map[String, Int] = {}
+  let func_return_types : Map[String, String] = {}
   let func_defs : Array[(@ast.TopLevel, Int)] = []
   let mut func_index = num_imports // インポート数分オフセット
   // 構造体定義のレジストリ（sema のシンボルテーブルを使用してレイアウト計算）
@@ -1344,8 +1382,9 @@ pub fn compile_program(
   let struct_defs : Map[String, @sema.StructInfo] = {}
   for top_level in program.top_levels {
     match top_level {
-      FuncDef(_, name, _, _) => {
+      FuncDef(return_type, name, _, _) => {
         functions[name] = func_index
+        func_return_types[name] = return_type
         func_defs.push((top_level, func_index))
         func_index += 1
       }
@@ -1383,7 +1422,10 @@ pub fn compile_program(
         func_types.push(ft)
         // type index = proc_exit の型(1つ) + ユーザー関数の順番
         type_indices.push(func_types.length() - 1)
-        let fb = compile_function(params, body, functions, struct_defs~)
+        let fb = compile_function(
+          params, body, functions, struct_defs~, return_type~,
+          func_return_types~,
+        )
         func_bodies.push(fb)
       }
       GlobalVarDecl(_, _, _) => () // 上のパスで既にエラーにしているため到達しない
