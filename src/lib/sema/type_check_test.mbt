@@ -428,3 +428,132 @@ test "TypeChecker: struct pointer parameter" {
   let tc = TypeChecker::new()
   inspect(tc.check_program(program), content="Ok(())")
 }
+
+// === 型付き AST 変換テスト ===
+
+test "transform_expr: IntLiteral has type Int" {
+  let tc = TypeChecker::new()
+  let result = tc.transform_expr(@ast.Expr::IntLiteral(42))
+  inspect(result, content="Ok({kind: IntLiteral(42), ty: Int})")
+}
+
+test "transform_expr: CharLiteral has type Char" {
+  let tc = TypeChecker::new()
+  let result = tc.transform_expr(@ast.Expr::CharLiteral('a'))
+  inspect(result, content="Ok({kind: CharLiteral('a'), ty: Char})")
+}
+
+test "transform_expr: StringLiteral has type Ptr(Char)" {
+  let tc = TypeChecker::new()
+  let result = tc.transform_expr(@ast.Expr::StringLiteral("hello"))
+  inspect(
+    result,
+    content="Ok({kind: StringLiteral(\"hello\"), ty: Ptr(Char)})",
+  )
+}
+
+test "transform_expr: BinaryOp Add preserves typed children" {
+  let tc = TypeChecker::new()
+  let result = tc.transform_expr(
+    @ast.Expr::BinaryOp(Add, IntLiteral(1), IntLiteral(2)),
+  )
+  inspect(
+    result,
+    content="Ok({kind: BinaryOp(Add, {kind: IntLiteral(1), ty: Int}, {kind: IntLiteral(2), ty: Int}), ty: Int})",
+  )
+}
+
+test "transform_expr: UnaryOp AddrOf yields Ptr type" {
+  let tc = TypeChecker::new()
+  let _ = tc.symbols.add_symbol("x", Variable(@ast.CType::Int))
+  let result = tc.transform_expr(@ast.Expr::UnaryOp(AddrOf, Ident("x")))
+  inspect(
+    result,
+    content="Ok({kind: UnaryOp(AddrOf, {kind: Ident(\"x\"), ty: Int}), ty: Ptr(Int)})",
+  )
+}
+
+test "transform_expr: Call returns typed args and return type" {
+  let tc = TypeChecker::new()
+  let _ = tc.symbols.add_symbol(
+    "add",
+    Function(@ast.CType::Int, [@ast.CType::Int, @ast.CType::Int]),
+  )
+  let result = tc.transform_expr(
+    @ast.Expr::Call("add", [IntLiteral(3), IntLiteral(4)]),
+  )
+  inspect(
+    result,
+    content="Ok({kind: Call(\"add\", [{kind: IntLiteral(3), ty: Int}, {kind: IntLiteral(4), ty: Int}]), ty: Int})",
+  )
+}
+
+test "transform_expr: Ident resolves variable type" {
+  let tc = TypeChecker::new()
+  let _ = tc.symbols.add_symbol(
+    "p",
+    Variable(@ast.CType::Ptr(@ast.CType::Int)),
+  )
+  let result = tc.transform_expr(@ast.Expr::Ident("p"))
+  inspect(result, content="Ok({kind: Ident(\"p\"), ty: Ptr(Int)})")
+}
+
+test "transform_program: simple return 42 produces typed AST" {
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef("int", "main", [], Block([Return(Some(IntLiteral(42)))])),
+    ],
+  }
+  let tc = TypeChecker::new()
+  let result = tc.transform_program(program)
+  let expected = "Ok({top_levels: [FuncDef(Int, \"main\", [], Block([Return(Some({kind: IntLiteral(42), ty: Int}))]))]})";
+  inspect(result, content=expected)
+}
+
+test "transform_program: function with params produces typed params" {
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "add",
+        [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
+        Block([Return(Some(BinaryOp(Add, Ident("a"), Ident("b"))))]),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  let result = tc.transform_program(program)
+  let expected = "Ok({top_levels: [FuncDef(Int, \"add\", [{ty: Int, name: \"a\"}, {ty: Int, name: \"b\"}], Block([Return(Some({kind: BinaryOp(Add, {kind: Ident(\"a\"), ty: Int}, {kind: Ident(\"b\"), ty: Int}), ty: Int}))]))]})";
+  inspect(result, content=expected)
+}
+
+test "transform_program: VarDecl resolves type from string to CType" {
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int", "main", [],
+        Block([VarDecl("int", "x", Some(IntLiteral(42))), Return(Some(Ident("x")))]),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  let result = tc.transform_program(program)
+  let expected = "Ok({top_levels: [FuncDef(Int, \"main\", [], Block([VarDecl(Int, \"x\", Some({kind: IntLiteral(42), ty: Int})), Return(Some({kind: Ident(\"x\"), ty: Int}))]))]})";
+  inspect(result, content=expected)
+}
+
+test "transform_program: struct def becomes StructDef with name only" {
+  let program : @ast.Program = {
+    top_levels: [
+      StructDef(
+        "Point",
+        [{ type_name: "int", name: "x" }, { type_name: "int", name: "y" }],
+      ),
+      FuncDef("int", "main", [], Block([Return(Some(IntLiteral(0)))])),
+    ],
+  }
+  let tc = TypeChecker::new()
+  let result = tc.transform_program(program)
+  let expected = "Ok({top_levels: [StructDef(\"Point\"), FuncDef(Int, \"main\", [], Block([Return(Some({kind: IntLiteral(0), ty: Int}))]))]})";
+  inspect(result, content=expected)
+}

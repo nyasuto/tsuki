@@ -89,3 +89,54 @@ pub(all) enum TopLevel {
 pub(all) struct Program {
   top_levels : Array[TopLevel]
 } derive(Show, Eq)
+
+// ============================================================
+// 型付き AST: 意味解析（Sema）で各ノードに解決済み型を付与した AST
+// ============================================================
+
+/// 型付き式: 解決済みの型情報を持つ式ノード
+pub(all) struct TypedExpr {
+  kind : TypedExprKind
+  ty : CType
+} derive(Show, Eq)
+
+/// 型付き式の種類
+pub(all) enum TypedExprKind {
+  IntLiteral(Int)                        // 整数リテラル
+  CharLiteral(Char)                      // 文字リテラル
+  StringLiteral(String)                  // 文字列リテラル
+  Ident(String)                          // 識別子
+  BinaryOp(BinOp, TypedExpr, TypedExpr) // 二項演算: op, lhs, rhs
+  UnaryOp(UnaryOp, TypedExpr)           // 単項演算: op, operand
+  Call(String, Array[TypedExpr])         // 関数呼び出し: name, args
+  Assign(TypedExpr, TypedExpr)          // 代入: lhs, rhs
+} derive(Show, Eq)
+
+/// 型付き文
+pub(all) enum TypedStmt {
+  Return(TypedExpr?)                                   // return 文
+  VarDecl(CType, String, TypedExpr?)                   // 変数宣言: 解決済み型, 変数名, 初期値
+  ExprStmt(TypedExpr)                                  // 式文
+  Block(Array[TypedStmt])                              // ブロック
+  If(TypedExpr, TypedStmt, TypedStmt?)                // if 文: 条件, then, else
+  While(TypedExpr, TypedStmt)                          // while 文: 条件, 本体
+  For(TypedStmt?, TypedExpr?, TypedExpr?, TypedStmt)  // for 文: init, cond, update, body
+} derive(Show, Eq)
+
+/// 型付きパラメータ: 解決済み型と変数名
+pub(all) struct TypedParam {
+  ty : CType
+  name : String
+} derive(Show, Eq)
+
+/// 型付きトップレベル定義
+pub(all) enum TypedTopLevel {
+  FuncDef(CType, String, Array[TypedParam], TypedStmt)  // 戻り値型, 関数名, パラメータ, 本体
+  GlobalVarDecl(CType, String, TypedExpr?)               // 解決済み型, 変数名, 初期値
+  StructDef(String)                                       // 構造体名（レイアウト情報は SymbolTable から参照）
+} derive(Show, Eq)
+
+/// 型付きプログラム
+pub(all) struct TypedProgram {
+  top_levels : Array[TypedTopLevel]
+} derive(Show, Eq)
