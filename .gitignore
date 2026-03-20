@@ -2,3 +2,4 @@
 out.wasm
 target/
 .mooncakes/
+_build
