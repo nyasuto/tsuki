@@ -199,6 +199,48 @@ test "parse if missing lparen" {
   )
 }
 
+// === while 文 ===
+
+test "parse while with block body" {
+  let result = parse_stmt_from("while (x > 0) { x = x - 1; }")
+  inspect!(
+    result,
+    content="Ok(While(BinaryOp(Gt, Ident(\"x\"), IntLiteral(0)), Block([ExprStmt(Assign(Ident(\"x\"), BinaryOp(Sub, Ident(\"x\"), IntLiteral(1))))])))",
+  )
+}
+
+test "parse while with single statement body" {
+  let result = parse_stmt_from("while (i < 10) i = i + 1;")
+  inspect!(
+    result,
+    content="Ok(While(BinaryOp(Lt, Ident(\"i\"), IntLiteral(10)), ExprStmt(Assign(Ident(\"i\"), BinaryOp(Add, Ident(\"i\"), IntLiteral(1))))))",
+  )
+}
+
+test "parse while with return body" {
+  let result = parse_stmt_from("while (1) return 0;")
+  inspect!(
+    result,
+    content="Ok(While(IntLiteral(1), Return(Some(IntLiteral(0)))))",
+  )
+}
+
+test "parse nested while" {
+  let result = parse_stmt_from("while (a) while (b) return 1;")
+  inspect!(
+    result,
+    content="Ok(While(Ident(\"a\"), While(Ident(\"b\"), Return(Some(IntLiteral(1))))))",
+  )
+}
+
+test "parse while missing lparen" {
+  let result = parse_stmt_from("while x > 0) { }")
+  inspect!(
+    result,
+    content="Err(\"expected LParen, got Ident(\\\"x\\\") at line 1, col 7\")",
+  )
+}
+
 // === 関数定義 ===
 
 /// ヘルパー: ソースコードから関数定義をパースする

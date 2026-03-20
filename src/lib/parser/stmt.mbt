@@ -71,6 +71,8 @@ pub fn Parser::parse_stmt(self : Parser) -> Result[@ast.Stmt, String] {
     KwReturn => self.parse_return_stmt()
     // if 文
     KwIf => self.parse_if_stmt()
+    // while 文
+    KwWhile => self.parse_while_stmt()
     // ブロック
     LBrace => self.parse_block()
     // 変数宣言（型キーワードで始まる）
@@ -116,6 +118,31 @@ fn Parser::parse_if_stmt(self : Parser) -> Result[@ast.Stmt, String] {
     None
   }
   Ok(@ast.Stmt::If(cond, then_stmt, else_stmt))
+}
+
+/// while 文のパース: while (expr) stmt
+fn Parser::parse_while_stmt(self : Parser) -> Result[@ast.Stmt, String] {
+  match self.expect(@lexer.Token::KwWhile) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  match self.expect(@lexer.Token::LParen) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  let cond = match self.parse_expr() {
+    Ok(e) => e
+    Err(e) => return Err(e)
+  }
+  match self.expect(@lexer.Token::RParen) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
+  let body = match self.parse_stmt() {
+    Ok(s) => s
+    Err(e) => return Err(e)
+  }
+  Ok(@ast.Stmt::While(cond, body))
 }
 
 /// return 文のパース: return; または return expr;
