@@ -40,3 +40,14 @@ pub(all) enum Expr {
   Call(String, Array[Expr])              // 関数呼び出し: name, args
   Assign(Expr, Expr)                    // 代入: lhs, rhs
 } derive(Show, Eq)
+
+/// 文
+pub(all) enum Stmt {
+  Return(Expr?)                        // return 文: 式（void 関数では None）
+  VarDecl(String, String, Expr?)       // 変数宣言: 型名, 変数名, 初期値
+  ExprStmt(Expr)                       // 式文
+  Block(Array[Stmt])                   // ブロック: 文のリスト
+  If(Expr, Stmt, Stmt?)               // if 文: 条件, then 節, else 節
+  While(Expr, Stmt)                    // while 文: 条件, 本体
+  For(Stmt?, Expr?, Expr?, Stmt)       // for 文: 初期化, 条件, 更新, 本体
+} derive(Show, Eq)
