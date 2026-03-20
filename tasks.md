@@ -41,7 +41,7 @@
 ## Phase 2: Parser + 基本 Codegen — ⏳ WAITING
 
 ### AST 定義
-- [ ] 式（Expr）の enum 定義: IntLit, CharLit, StringLit, Ident, BinaryOp, UnaryOp, Call, Assign
+- [x] 式（Expr）の enum 定義: IntLit, CharLit, StringLit, Ident, BinaryOp, UnaryOp, Call, Assign
 - [ ] 文（Stmt）の enum 定義: Return, VarDecl, ExprStmt, Block, If, While, For
 - [ ] トップレベル（TopLevel）の enum 定義: FuncDef, GlobalVarDecl
 - [ ] 型（CType）の enum 定義: Int, Char, Void, Ptr(CType), Struct(String), Array(CType, Int)
