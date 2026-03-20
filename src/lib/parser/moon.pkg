@@ -1,4 +1,0 @@
-import {
-  "yast/mucc/src/lib/lexer" @lexer,
-  "yast/mucc/src/lib/ast" @ast,
-}

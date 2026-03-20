@@ -1,9 +1,0 @@
-import {
-  "yast/mucc/src/lib/lexer" @lexer,
-  "yast/mucc/src/lib/parser" @parser,
-  "yast/mucc/src/lib/codegen" @codegen,
-}
-
-options(
-  "is-main": true,
-)
