@@ -1,0 +1,356 @@
+// === is_assignable テスト ===
+
+test "is_assignable: Int to Int" {
+  inspect(is_assignable(@ast.CType::Int, @ast.CType::Int), content="true")
+}
+
+test "is_assignable: Char to Char" {
+  inspect(is_assignable(@ast.CType::Char, @ast.CType::Char), content="true")
+}
+
+test "is_assignable: Char to Int (implicit conversion)" {
+  inspect(is_assignable(@ast.CType::Int, @ast.CType::Char), content="true")
+}
+
+test "is_assignable: Int to Char (implicit conversion)" {
+  inspect(is_assignable(@ast.CType::Char, @ast.CType::Int), content="true")
+}
+
+test "is_assignable: Ptr(Int) to Ptr(Int)" {
+  inspect(
+    is_assignable(@ast.CType::Ptr(@ast.CType::Int), @ast.CType::Ptr(@ast.CType::Int)),
+    content="true",
+  )
+}
+
+test "is_assignable: Ptr(Char) to Ptr(Int) is false" {
+  inspect(
+    is_assignable(@ast.CType::Ptr(@ast.CType::Int), @ast.CType::Ptr(@ast.CType::Char)),
+    content="false",
+  )
+}
+
+test "is_assignable: Void to Int is false" {
+  inspect(is_assignable(@ast.CType::Int, @ast.CType::Void), content="false")
+}
+
+test "is_assignable: Int to Void is false" {
+  inspect(is_assignable(@ast.CType::Void, @ast.CType::Int), content="false")
+}
+
+test "is_assignable: Int to Ptr (C allows)" {
+  inspect(
+    is_assignable(@ast.CType::Ptr(@ast.CType::Int), @ast.CType::Int),
+    content="true",
+  )
+}
+
+test "is_assignable: Struct same name" {
+  inspect(
+    is_assignable(@ast.CType::Struct("Point"), @ast.CType::Struct("Point")),
+    content="true",
+  )
+}
+
+test "is_assignable: Struct different name" {
+  inspect(
+    is_assignable(@ast.CType::Struct("Point"), @ast.CType::Struct("Rect")),
+    content="false",
+  )
+}
+
+// === TypeChecker: 正常ケースのテスト ===
+
+test "TypeChecker: simple return 42" {
+  // int main() { return 42; }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "main",
+        [],
+        Block([Return(Some(IntLiteral(42)))]),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(tc.check_program(program), content="Ok(())")
+}
+
+test "TypeChecker: return with variable" {
+  // int main() { int x = 10; return x; }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "main",
+        [],
+        Block([VarDecl("int", "x", Some(IntLiteral(10))), Return(Some(Ident("x")))]),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(tc.check_program(program), content="Ok(())")
+}
+
+test "TypeChecker: function call with matching args" {
+  // int add(int a, int b) { return a + b; }
+  // int main() { return add(3, 4); }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "add",
+        [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
+        Block([Return(Some(BinaryOp(Add, Ident("a"), Ident("b"))))]),
+      ),
+      FuncDef(
+        "int",
+        "main",
+        [],
+        Block([Return(Some(Call("add", [IntLiteral(3), IntLiteral(4)])))]),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(tc.check_program(program), content="Ok(())")
+}
+
+test "TypeChecker: char to int assignment" {
+  // int main() { int x = 'a'; return x; }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "main",
+        [],
+        Block(
+          [VarDecl("int", "x", Some(CharLiteral('a'))), Return(Some(Ident("x")))],
+        ),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(tc.check_program(program), content="Ok(())")
+}
+
+test "TypeChecker: void function with no return value" {
+  // void nop() { return; }
+  let program : @ast.Program = {
+    top_levels: [FuncDef("void", "nop", [], Block([Return(None)]))],
+  }
+  let tc = TypeChecker::new()
+  inspect(tc.check_program(program), content="Ok(())")
+}
+
+test "TypeChecker: if-else type check" {
+  // int abs(int x) { if (x < 0) return -x; else return x; }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "abs",
+        [{ type_name: "int", name: "x" }],
+        Block(
+          [
+            If(
+              BinaryOp(Lt, Ident("x"), IntLiteral(0)),
+              Return(Some(UnaryOp(Neg, Ident("x")))),
+              Some(Return(Some(Ident("x")))),
+            ),
+          ],
+        ),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(tc.check_program(program), content="Ok(())")
+}
+
+// === TypeChecker: エラーケースのテスト ===
+
+test "TypeChecker: void function returns value" {
+  // void f() { return 42; }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "void",
+        "f",
+        [],
+        Block([Return(Some(IntLiteral(42)))]),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(
+    tc.check_program(program),
+    content="Err(\"void function should not return a value\")",
+  )
+}
+
+test "TypeChecker: undefined variable" {
+  // int main() { return x; }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef("int", "main", [], Block([Return(Some(Ident("x")))])),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(
+    tc.check_program(program),
+    content="Err(\"undefined variable: 'x'\")",
+  )
+}
+
+test "TypeChecker: undefined function call" {
+  // int main() { return foo(); }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "main",
+        [],
+        Block([Return(Some(Call("foo", [])))]),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(
+    tc.check_program(program),
+    content="Err(\"undefined function: 'foo'\")",
+  )
+}
+
+test "TypeChecker: wrong number of arguments" {
+  // int add(int a, int b) { return a + b; }
+  // int main() { return add(1); }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "add",
+        [{ type_name: "int", name: "a" }, { type_name: "int", name: "b" }],
+        Block([Return(Some(BinaryOp(Add, Ident("a"), Ident("b"))))]),
+      ),
+      FuncDef(
+        "int",
+        "main",
+        [],
+        Block([Return(Some(Call("add", [IntLiteral(1)])))]),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(
+    tc.check_program(program),
+    content="Err(\"function 'add' expects 2 arguments, got 1\")",
+  )
+}
+
+test "TypeChecker: variable redefinition in same scope" {
+  // int main() { int x = 1; int x = 2; return x; }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "main",
+        [],
+        Block(
+          [
+            VarDecl("int", "x", Some(IntLiteral(1))),
+            VarDecl("int", "x", Some(IntLiteral(2))),
+            Return(Some(Ident("x"))),
+          ],
+        ),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(
+    tc.check_program(program),
+    content="Err(\"redefinition of 'x'\")",
+  )
+}
+
+test "TypeChecker: calling a variable as function" {
+  // int main() { int x = 1; return x(); }
+  let program : @ast.Program = {
+    top_levels: [
+      FuncDef(
+        "int",
+        "main",
+        [],
+        Block(
+          [VarDecl("int", "x", Some(IntLiteral(1))), Return(Some(Call("x", [])))],
+        ),
+      ),
+    ],
+  }
+  let tc = TypeChecker::new()
+  inspect(
+    tc.check_program(program),
+    content="Err(\"'x' is not a function\")",
+  )
+}
+
+// === infer_expr テスト ===
+
+test "TypeChecker: infer_expr IntLiteral" {
+  let tc = TypeChecker::new()
+  inspect(tc.infer_expr(IntLiteral(42)), content="Ok(Int)")
+}
+
+test "TypeChecker: infer_expr CharLiteral" {
+  let tc = TypeChecker::new()
+  inspect(tc.infer_expr(CharLiteral('a')), content="Ok(Char)")
+}
+
+test "TypeChecker: infer_expr StringLiteral" {
+  let tc = TypeChecker::new()
+  inspect(tc.infer_expr(StringLiteral("hello")), content="Ok(Ptr(Char))")
+}
+
+test "TypeChecker: infer_expr BinaryOp arithmetic" {
+  let tc = TypeChecker::new()
+  inspect(
+    tc.infer_expr(BinaryOp(Add, IntLiteral(1), IntLiteral(2))),
+    content="Ok(Int)",
+  )
+}
+
+test "TypeChecker: infer_expr comparison" {
+  let tc = TypeChecker::new()
+  inspect(
+    tc.infer_expr(BinaryOp(Lt, IntLiteral(1), IntLiteral(2))),
+    content="Ok(Int)",
+  )
+}
+
+test "TypeChecker: infer_expr UnaryOp Neg" {
+  let tc = TypeChecker::new()
+  inspect(tc.infer_expr(UnaryOp(Neg, IntLiteral(1))), content="Ok(Int)")
+}
+
+test "TypeChecker: infer_expr UnaryOp AddrOf" {
+  let tc = TypeChecker::new()
+  let _ = tc.symbols.add_symbol("x", Variable(@ast.CType::Int))
+  inspect(tc.infer_expr(UnaryOp(AddrOf, Ident("x"))), content="Ok(Ptr(Int))")
+}
+
+test "TypeChecker: infer_expr UnaryOp Deref" {
+  let tc = TypeChecker::new()
+  let _ = tc.symbols.add_symbol(
+    "p",
+    Variable(@ast.CType::Ptr(@ast.CType::Int)),
+  )
+  inspect(tc.infer_expr(UnaryOp(Deref, Ident("p"))), content="Ok(Int)")
+}
+
+test "TypeChecker: deref non-pointer is error" {
+  let tc = TypeChecker::new()
+  let _ = tc.symbols.add_symbol("x", Variable(@ast.CType::Int))
+  inspect(
+    tc.infer_expr(UnaryOp(Deref, Ident("x"))),
+    content="Err(\"cannot dereference non-pointer type: Int\")",
+  )
+}
