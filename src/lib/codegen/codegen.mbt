@@ -320,8 +320,39 @@ pub fn emit_stmt(
       // end (block)
       code.push(op_end)
     }
-    For(_, _, _, _) =>
-      raise CodegenError("codegen: For は未実装（Phase 3 で実装）")
+    For(init, cond, update, body) => {
+      // for → while への AST レベル変換（desugar）
+      // for (init; cond; update) body
+      // → { init; while (cond) { body; update; } }
+      let while_body = match update {
+        Some(upd) => {
+          // body の中身を展開して update を追加
+          let stmts : Array[@ast.Stmt] = match body {
+            Block(ss) => {
+              let new_stmts = ss.copy()
+              new_stmts.push(ExprStmt(upd))
+              new_stmts
+            }
+            _ => [body, ExprStmt(upd)]
+          }
+          @ast.Stmt::Block(stmts)
+        }
+        None => body
+      }
+      let cond_expr = match cond {
+        Some(c) => c
+        None => @ast.Expr::IntLiteral(1) // 条件省略 → 無限ループ（常に真）
+      }
+      let while_stmt = @ast.Stmt::While(cond_expr, while_body)
+      match init {
+        Some(init_stmt) => {
+          // init がある場合は Block で囲む
+          emit_stmt(init_stmt, code, ctx)
+          emit_stmt(while_stmt, code, ctx)
+        }
+        None => emit_stmt(while_stmt, code, ctx)
+      }
+    }
   }
 }
 
