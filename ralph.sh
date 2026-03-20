@@ -155,10 +155,14 @@ run_iteration() {
     fi
     echo -e "${BLUE}----------------${NC}"
 
-    # 完了チェック：tasks.md に ALL_DONE マーカーがあれば終了（コメント行は除外）
-    if grep -v '<!--' "$TASKS_FILE" 2>/dev/null | grep -q "ALL_PHASES_COMPLETE\|🏁 ALL DONE"; then
-        echo -e "${GREEN}🎉 全フェーズ完了！ Ralph Loop を終了します。${NC}"
+    # 完了チェック：tasks.md に未完了タスク（[ ]）が残っていなければ終了
+    local remaining
+    remaining=$(grep -c '\- \[ \]' "$TASKS_FILE" 2>/dev/null || echo "0")
+    if [ "$remaining" -eq 0 ]; then
+        echo -e "${GREEN}🎉 全タスク完了！ Ralph Loop を終了します。${NC}"
         return 1  # ループ終了シグナル
+    else
+        echo -e "${BLUE}[ralph] 残タスク: ${remaining} 個${NC}"
     fi
 
     return 0
