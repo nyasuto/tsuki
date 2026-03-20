@@ -256,6 +256,35 @@ test "parse all comparison operators" {
   inspect(expr3, content="Ok(BinaryOp(Ne, Ident(\"a\"), Ident(\"b\")))")
 }
 
+test "parse logical and left associativity" {
+  let parser = make_parser("a && b && c")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(BinaryOp(LogAnd, BinaryOp(LogAnd, Ident(\"a\"), Ident(\"b\")), Ident(\"c\")))",
+  )
+}
+
+test "parse logical or left associativity" {
+  let parser = make_parser("a || b || c")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(BinaryOp(LogOr, BinaryOp(LogOr, Ident(\"a\"), Ident(\"b\")), Ident(\"c\")))",
+  )
+}
+
+test "parse logical operators with comparison" {
+  // a < b && c == d || e != f
+  // 期待: ((a < b) && (c == d)) || (e != f)
+  let parser = make_parser("a < b && c == d || e != f")
+  let expr = parser.parse_expr()
+  inspect(
+    expr,
+    content="Ok(BinaryOp(LogOr, BinaryOp(LogAnd, BinaryOp(Lt, Ident(\"a\"), Ident(\"b\")), BinaryOp(Eq, Ident(\"c\"), Ident(\"d\"))), BinaryOp(Ne, Ident(\"e\"), Ident(\"f\"))))",
+  )
+}
+
 test "parse error on unexpected token" {
   let parser = make_parser(";")
   let expr = parser.parse_expr()
