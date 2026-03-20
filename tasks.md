@@ -64,7 +64,7 @@
 - [x] Section エンコーディングの汎用関数（section id + size + payload）
 - [x] Type Section: 関数シグネチャ（param types → result types）
 - [x] Function Section: 関数インデックス → type インデックスのマッピング
-- [ ] Memory Section: 線形メモリの宣言（initial 1 page）
+- [x] Memory Section: 線形メモリの宣言（initial 1 page）
 - [ ] Export Section: main 関数と memory のエクスポート
 - [ ] Code Section: 関数本体（locals + 命令列）
 
