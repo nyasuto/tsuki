@@ -9,7 +9,7 @@
 ## Phase 1: プロジェクト基盤 + Lexer — 🔄 IN_PROGRESS
 
 ### セットアップ
-- [ ] `moon new mucc` でプロジェクト初期化
+- [x] `moon new mucc` でプロジェクト初期化
 - [ ] ディレクトリ構成を作成（src/lib/lexer, src/lib/ast, src/lib/parser, src/lib/sema, src/lib/codegen, src/lib/wasm, src/main）
 - [ ] 各パッケージの moon.pkg.json を作成
 - [ ] CLAUDE.md をプロジェクトルートに配置
