@@ -323,17 +323,25 @@ fn compile_function(
 /// Program 全体をコンパイルして完全な Wasm バイナリ（Array[Byte]）を生成する
 ///
 /// 処理の流れ:
-/// 1. 全関数定義を走査して function index を割り当て
-/// 2. 各関数の FuncType（シグネチャ）を収集
-/// 3. 各関数本体をコンパイルして FuncBody を生成
-/// 4. 全セクションを組み立てて .wasm バイナリを返す
+/// 1. WASI proc_exit をインポート（function index 0）
+/// 2. 全関数定義を走査して function index を割り当て（インポート数分オフセット）
+/// 3. 各関数の FuncType（シグネチャ）を収集
+/// 4. 各関数本体をコンパイルして FuncBody を生成
+/// 5. _start ラッパー関数を生成（main を呼んで proc_exit に渡す）
+/// 6. 全セクションを組み立てて .wasm バイナリを返す
 pub fn compile_program(
   program : @ast.Program
 ) -> Array[Byte] raise CodegenError {
+  // WASI インポート: proc_exit (i32) -> ()
+  // インポートされた関数は function index の先頭に配置される
+  let num_imports = 1
+  let proc_exit_type_index = 0 // Type Section 内のインデックス
+  let proc_exit_func_index = 0 // function index（インポート分）
   // 第1パス: 関数名 → function index のマッピングを構築
+  // インポート関数の後にユーザー定義関数を配置する
   let functions : Map[String, Int] = {}
   let func_defs : Array[(@ast.TopLevel, Int)] = []
-  let mut func_index = 0
+  let mut func_index = num_imports // インポート数分オフセット
   for top_level in program.top_levels {
     match top_level {
       FuncDef(_, name, _, _) => {
@@ -350,32 +358,71 @@ pub fn compile_program(
     raise CodegenError("codegen: プログラムに関数定義がありません")
   }
   // 第2パス: FuncType と FuncBody を収集
-  let func_types : Array[@wasm.FuncType] = Array::new(capacity=func_defs.length())
-  let func_bodies : Array[@wasm.FuncBody] = Array::new(capacity=func_defs.length())
-  let type_indices : Array[Int] = Array::new(capacity=func_defs.length())
-  for i, item in func_defs {
+  // Type Section の構成: [proc_exit の型, ユーザー関数の型..., _start の型]
+  let func_types : Array[@wasm.FuncType] = Array::new(
+    capacity=func_defs.length() + 2,
+  )
+  // index 0: proc_exit の型 (i32) -> ()
+  func_types.push({ params: [@wasm.I32], results: [] })
+  // ユーザー定義関数の型
+  let func_bodies : Array[@wasm.FuncBody] = Array::new(
+    capacity=func_defs.length() + 1,
+  )
+  let type_indices : Array[Int] = Array::new(capacity=func_defs.length() + 1)
+  for item in func_defs {
     let (top_level, _) = item
     match top_level {
       FuncDef(return_type, _, params, body) => {
         let ft = func_def_to_functype(return_type, params)
         func_types.push(ft)
-        type_indices.push(i) // type index = function index（1対1対応）
+        // type index = proc_exit の型(1つ) + ユーザー関数の順番
+        type_indices.push(func_types.length() - 1)
         let fb = compile_function(params, body, functions)
         func_bodies.push(fb)
       }
       GlobalVarDecl(_, _, _) => () // 上のパスで既にエラーにしているため到達しない
     }
   }
-  // エクスポートの構築: "_start" 関数があればそれをエクスポート、なければ "main" を探す
-  let exports : Array[@wasm.ExportEntry] = Array::new(capacity=2)
-  // main 関数をエクスポート（wasmtime は "_start" を探す）
+  // _start ラッパー関数の生成: main() を呼んで proc_exit に渡す
+  let start_func_index = func_index // _start の function index
+  // _start の型: () -> ()
+  let start_type_index = func_types.length()
+  func_types.push({ params: [], results: [] })
+  type_indices.push(start_type_index)
+  // _start の本体: call $main; call $proc_exit
+  let start_code : Array[Byte] = []
   match functions.get("main") {
-    Some(main_index) =>
-      exports.push(
-        { name: "_start", kind: @wasm.ExportFunc, index: main_index },
-      )
-    None => ()
+    Some(main_index) => {
+      // call $main
+      start_code.push(op_call)
+      let main_idx_bytes = @wasm.encode_uleb128(main_index)
+      for b in main_idx_bytes {
+        start_code.push(b)
+      }
+      // call $proc_exit (function index 0)
+      start_code.push(op_call)
+      let proc_exit_bytes = @wasm.encode_uleb128(proc_exit_func_index)
+      for b in proc_exit_bytes {
+        start_code.push(b)
+      }
+    }
+    None =>
+      raise CodegenError("codegen: main 関数が定義されていません")
   }
+  func_bodies.push({ locals: [], code: start_code })
+  // インポートの構築
+  let imports : Array[@wasm.ImportEntry] = [
+    {
+      module_name: "wasi_snapshot_preview1",
+      field_name: "proc_exit",
+      desc: @wasm.ImportFunc(proc_exit_type_index),
+    },
+  ]
+  // エクスポートの構築: _start 関数と memory をエクスポート
+  let exports : Array[@wasm.ExportEntry] = Array::new(capacity=2)
+  exports.push(
+    { name: "_start", kind: @wasm.ExportFunc, index: start_func_index },
+  )
   // memory もエクスポート
   exports.push(
     { name: "memory", kind: @wasm.ExportMem, index: 0 },
@@ -390,6 +437,11 @@ pub fn compile_program(
   // Type Section
   let type_sec = @wasm.encode_type_section(func_types)
   for b in type_sec {
+    result.push(b)
+  }
+  // Import Section
+  let import_sec = @wasm.encode_import_section(imports)
+  for b in import_sec {
     result.push(b)
   }
   // Function Section

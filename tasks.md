@@ -78,7 +78,7 @@
 - [x] .wasm バイナリファイルへの書き出し
 
 ### Phase 2 統合テスト
-- [ ] `int main() { return 42; }` → .wasm → wasmtime → exit code 42
+- [x] `int main() { return 42; }` → .wasm → wasmtime → exit code 42
 - [ ] `int main() { return 3 + 4 * 5; }` → 23
 - [ ] `int add(int a, int b) { return a + b; } int main() { return add(3, 4); }` → 7
 - [ ] `int main() { int x = 10; int y = 20; return x + y; }` → 30
