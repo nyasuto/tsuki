@@ -70,3 +70,50 @@ test "Lexer::is_eof" {
   let _ = lexer.advance()
   inspect(lexer.is_eof(), content="true")
 }
+
+test "scan integer literal: single digit" {
+  let lexer = @lexer.Lexer::new("0")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(0), pos: {line: 1, col: 1}})")
+}
+
+test "scan integer literal: multi digit" {
+  let lexer = @lexer.Lexer::new("42")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(42), pos: {line: 1, col: 1}})")
+}
+
+test "scan integer literal: large number" {
+  let lexer = @lexer.Lexer::new("12345")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(12345), pos: {line: 1, col: 1}})")
+}
+
+test "scan integer literal: stops at non-digit" {
+  let lexer = @lexer.Lexer::new("123abc")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: IntLit(123), pos: {line: 1, col: 1}})")
+  // position should be at 'a'
+  inspect(lexer.pos, content="3")
+}
+
+test "next_token returns Eof on empty input" {
+  let lexer = @lexer.Lexer::new("")
+  let result = lexer.next_token()
+  inspect(result, content="Ok({token: Eof, pos: {line: 1, col: 1}})")
+}
+
+test "next_token returns error on unexpected char" {
+  let lexer = @lexer.Lexer::new("@")
+  let result = lexer.next_token()
+  inspect(result, content="Err(\"unexpected character '@' at line 1, col 1\")")
+}
+
+test "tokenize: sequence of integer literals separated by non-digits" {
+  let lexer = @lexer.Lexer::new("42")
+  let result = lexer.tokenize()
+  inspect(
+    result,
+    content="Ok([{token: IntLit(42), pos: {line: 1, col: 1}}, {token: Eof, pos: {line: 1, col: 3}}])",
+  )
+}

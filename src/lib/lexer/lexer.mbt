@@ -56,3 +56,62 @@ pub fn Lexer::current_pos(self : Lexer) -> Pos {
 pub fn Lexer::is_eof(self : Lexer) -> Bool {
   self.pos >= self.src.length()
 }
+
+/// 文字が10進数字かどうか
+fn is_digit(ch : Char) -> Bool {
+  ch >= '0' && ch <= '9'
+}
+
+/// 整数リテラルをスキャンする（現在位置が数字であること前提）
+fn Lexer::scan_int_lit(self : Lexer) -> Token {
+  let mut value = 0
+  while not(self.is_eof()) {
+    match self.peek() {
+      Some(ch) =>
+        if is_digit(ch) {
+          value = value * 10 + (ch.to_int() - '0'.to_int())
+          let _ = self.advance()
+        } else {
+          break
+        }
+      None => break
+    }
+  }
+  Token::IntLit(value)
+}
+
+/// 次のトークンを読み取る
+pub fn Lexer::next_token(self : Lexer) -> Result[LocToken, String] {
+  if self.is_eof() {
+    let pos = self.current_pos()
+    return Ok(LocToken::{ token: Token::Eof, pos })
+  }
+  let pos = self.current_pos()
+  match self.peek() {
+    Some(ch) =>
+      if is_digit(ch) {
+        let token = self.scan_int_lit()
+        Ok(LocToken::{ token, pos })
+      } else {
+        Err("unexpected character '\{ch}' at line \{pos.line}, col \{pos.col}")
+      }
+    None => Ok(LocToken::{ token: Token::Eof, pos })
+  }
+}
+
+/// 全トークンを読み取る
+pub fn Lexer::tokenize(self : Lexer) -> Result[Array[LocToken], String] {
+  let tokens : Array[LocToken] = []
+  while true {
+    match self.next_token() {
+      Ok(loc_token) => {
+        tokens.push(loc_token)
+        if loc_token.token == Token::Eof {
+          break
+        }
+      }
+      Err(e) => return Err(e)
+    }
+  }
+  Ok(tokens)
+}
